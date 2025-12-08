@@ -1,34 +1,39 @@
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.SceneManagement; // Wichtig für SceneManager
+ using static CardEnums;// <- Das brauchst du meist nicht, wenn die Enums global sind
 
 public class MainMenu : MonoBehaviour
 {
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
     
-   
+
+    // Start wird automatisch von Unity aufgerufen, wenn die Szene startet
+    private void Start()
+    {
+        
+    }
+
+    
+
+    // --- Deine Buttons ---
+
     public void StartHost()
     {
-               Debug.Log("Start Host button clicked");
-        // Implement host starting logic here
+        Debug.Log("Start Host button clicked");
         NetworkManager.Singleton.StartHost();
-        NetworkManager.Singleton.SceneManager.LoadScene("GamePlay", UnityEngine.SceneManagement.LoadSceneMode.Single);
-
+        NetworkManager.Singleton.SceneManager.LoadScene("GamePlay", LoadSceneMode.Single);
     }
+
     public void StartServer()
     {
         Debug.Log("Start Server button clicked");
-        // Implement host starting logic here
         NetworkManager.Singleton.StartServer();
-        NetworkManager.Singleton.SceneManager.LoadScene("GamePlay", UnityEngine.SceneManagement.LoadSceneMode.Single);
-
+        NetworkManager.Singleton.SceneManager.LoadScene("GamePlay", LoadSceneMode.Single);
     }
+
     public void StartClient()
     {
         Debug.Log("Start Client button clicked");
-        // Implement host starting logic here
         NetworkManager.Singleton.StartClient();
-
     }
-
 }
-
