@@ -4,34 +4,57 @@ using UnityEngine.SceneManagement;
 
 public class GameplayMenu : MonoBehaviour
 {
-    // Hier KEINE Start-Methode mit Deck-Logik! Das macht nur der GameManager.
+    // Singleton-Instanz: Damit der GameManager einfach "GameplayMenu.Instance" rufen kann
+    public static GameplayMenu Instance { get; private set; }
 
-    // Button: "Start Round"
-    public void OnStartGameClicked()
+    [Header("UI References")]
+    public Transform handContainer; // Hier werden die Karten-Objekte als "Kinder" reingehängt
+
+    private void Awake()
     {
-        // Wir prüfen, ob wir der Server/Host sind
-        if (NetworkManager.Singleton.IsServer)
+        // Singleton-Logik: Es darf nur ein Menü geben
+        if (Instance != null && Instance != this)
         {
-            Debug.Log("UI: Start Round geklickt -> Sende an GameManager");
-            if (GameManager.Instance != null)
-            {
-                GameManager.Instance.StartGame();
-            }
-            else
-            {
-                Debug.LogError("Fehler: GameManager Instanz nicht gefunden!");
-            }
+            Destroy(gameObject);
         }
         else
         {
-            Debug.Log("Nur der Host kann das Spiel starten.");
+            Instance = this;
         }
     }
 
-    // Button: "Disconnect"
+    public void OnStartGameClicked()
+    {
+        // Wir suchen den GameManager (dieser muss in der Szene existieren!)
+        if (NetworkManager.Singleton.IsServer)
+        {
+            // Neue Methode in Unity 2023+, früher FindObjectOfType
+            var gameManager = FindFirstObjectByType<GameManager>();
+            if (gameManager != null)
+            {
+                gameManager.StartGame();
+            }
+            else
+            {
+                Debug.LogError("GameManager nicht gefunden!");
+            }
+        }
+    }
+
     public void Disconnect()
     {
         NetworkManager.Singleton.Shutdown();
         SceneManager.LoadScene("MainMenu");
+    }
+
+    // Hilfsfunktion: Hand leeren (z.B. bei Rundenbeginn, damit keine alten Karten bleiben)
+    public void ClearHand()
+    {
+        if (handContainer == null) return;
+
+        foreach (Transform child in handContainer)
+        {
+            Destroy(child.gameObject);
+        }
     }
 }

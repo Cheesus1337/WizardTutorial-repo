@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using static CardEnums;
+using System;
 
 public class CardController : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler, IPointerClickHandler
 {
@@ -12,13 +13,17 @@ public class CardController : MonoBehaviour, IPointerEnterHandler, IPointerExitH
     [SerializeField] private TextMeshProUGUI valueTopRight;
     [SerializeField] private TextMeshProUGUI valueBottomLeft;
 
+    [Header("Settings")]
+    [SerializeField] private CardThemeSO cardTheme; // Verweis auf deine Grafiken
+
     [Header("Data")]
     // Wir speichern hier die echten Daten der Karte
     public CardData cardData;
 
     // Referenz auf unser Grafik-Thema (muss im Inspector zugewiesen oder per Code geladen werden)
-    [SerializeField] private CardThemeSO cardTheme;
 
+    // Interne Daten
+    private CardData _myCardData;
     private Vector3 _originalScale;
     private Vector3 _hoverScale;
     private Outline _outline;
@@ -40,47 +45,28 @@ public class CardController : MonoBehaviour, IPointerEnterHandler, IPointerExitH
         UpdateVisuals();
     }
 
-    private void UpdateVisuals()
+   
+        private void UpdateVisuals()
     {
-        if (cardTheme == null)
+        // 1. Text setzen (Zahl oder Buchstabe)
+        string textValue = GetDisplayString(_myCardData.value);
+        if (valueTopRight) valueTopRight.text = textValue;
+        if (valueBottomLeft) valueBottomLeft.text = textValue;
+
+        // 2. Grafik & Farbe setzen (falls Theme vorhanden)
+        if (cardTheme != null)
         {
-            Debug.LogError($"Kein CardThemeSO im CardController '{name}' zugewiesen!");
-            return;
-        }
+            Color c = cardTheme.GetColor(_myCardData.color);
 
-        // 1. Texte setzen
-        string displayValue = GetDisplayString(cardData.value);
-        valueTopRight.text = displayValue;
-        valueBottomLeft.text = displayValue;
+            // Texte einfärben
+            if (valueTopRight) valueTopRight.color = c;
+            if (valueBottomLeft) valueBottomLeft.color = c;
 
-        // 2. Farben setzen
-        Color cardColor = cardTheme.GetColor(cardData.color);
-
-        // Texte einfärben
-        valueTopRight.color = cardColor;
-        valueBottomLeft.color = cardColor;
-
-        // Optional: Wenn du den Hintergrund einfärben willst (abhängig von deinem Design)
-        if (backgroundImage != null)
-        {
-            backgroundImage.color = Color.white; // Oder cardColor, je nach Design-Wunsch
-        }
-
-        // 3. Bild setzen (Sprite)
-        if (cardImage != null)
-        {
-            // Wir holen uns das Bild basierend auf dem Wert (Index im Enum casten)
-            // Achtung: Das setzt voraus, dass die Liste im SO exakt die gleiche Reihenfolge hat wie das Enum!
-            int spriteIndex = (int)cardData.value - 1; // -1 weil Enum bei 1 anfängt, Liste bei 0
-
-            if (spriteIndex >= 0 && spriteIndex < cardTheme.valueSprites.Count)
+            // Optional: Bild setzen (falls du Icons hast)
+            // Hier könnten wir später cardImage.sprite = ... setzen
+            if (cardImage != null)
             {
-                cardImage.sprite = cardTheme.valueSprites[spriteIndex];
-                cardImage.color = cardColor; // Das Bild in der Farbe der Karte tönen
-            }
-            else
-            {
-                Debug.LogWarning($"Kein Sprite für Index {spriteIndex} ({cardData.value}) gefunden.");
+                cardImage.color = c; // Färbt das Mittelbild in der Kartenfarbe
             }
         }
     }

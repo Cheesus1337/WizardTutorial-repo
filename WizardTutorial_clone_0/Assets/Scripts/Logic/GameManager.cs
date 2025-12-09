@@ -8,6 +8,9 @@ public class GameManager : NetworkBehaviour
     // Singleton-Pattern: Damit wir von überall einfach "GameManager.Instance" aufrufen können
     public static GameManager Instance { get; private set; }
 
+    [Header("References")]
+    [SerializeField] private GameObject cardPrefab; // Hier ziehen wir das Karten-Prefab rein
+
     [Header("Game Settings")]
     [SerializeField] private int currentRound = 1;
 
@@ -127,18 +130,40 @@ public class GameManager : NetworkBehaviour
     [ClientRpc]
     private void ReceiveHandCardsClientRpc(int[] colors, int[] values, ClientRpcParams clientRpcParams = default)
     {
-        // Dieser Code wird auf dem Client ausgeführt, der die Karten bekommt
-        Debug.Log($"Ich (Client {NetworkManager.Singleton.LocalClientId}) habe {colors.Length} Karten bekommen!");
+        Debug.Log($"Client empfängt {colors.Length} Karten.");
 
-        // Hier müssen wir die Arrays wieder in echte CardData umwandeln
-        List<CardData> myHand = new List<CardData>();
-        for (int i = 0; i < colors.Length; i++)
+        // 1. Prüfen, ob wir das Menü finden
+        if (GameplayMenu.Instance == null)
         {
-            CardData card = new CardData((CardColor)colors[i], (CardValue)values[i]);
-            myHand.Add(card);
-            Debug.Log($"  - Karte: {card}");
+            Debug.LogError("GameplayMenu Instance nicht gefunden! Kann Karten nicht anzeigen.");
+            return;
         }
 
-        // TODO: In Phase 3 werden wir diese Karten hier visuell anzeigen!
+        // 2. Hand leeren (Aufräumen vor neuer Runde)
+        GameplayMenu.Instance.ClearHand();
+
+        // 3. Neue Karten erstellen
+        for (int i = 0; i < colors.Length; i++)
+        {
+            // Daten aus den Integers rekonstruieren
+            CardData data = new CardData((CardColor)colors[i], (CardValue)values[i]);
+
+            if (cardPrefab != null)
+            {
+                // Karte als "Kind" des handContainer im Menu instanziieren
+                GameObject newCard = Instantiate(cardPrefab, GameplayMenu.Instance.handContainer);
+
+                // Controller holen und initialisieren
+                CardController controller = newCard.GetComponent<CardController>();
+                if (controller != null)
+                {
+                    controller.Initialize(data);
+                }
+            }
+            else
+            {
+                Debug.LogError("CardPrefab ist im GameManager nicht zugewiesen!");
+            }
+        }
     }
 }
