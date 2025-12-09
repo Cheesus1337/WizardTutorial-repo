@@ -98,6 +98,7 @@ public class PlayerRowUI : MonoBehaviour
         _tempBid += change;
         if (_tempBid < 0) _tempBid = 0; // Keine negativen Stiche
 
+
         // Feedback sofort anzeigen (lokal)
         if (bidText) bidText.text = _tempBid.ToString();
     }

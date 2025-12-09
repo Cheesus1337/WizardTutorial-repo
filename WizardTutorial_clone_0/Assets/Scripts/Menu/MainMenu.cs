@@ -20,8 +20,21 @@ public class MainMenu : MonoBehaviour
     public void StartHost()
     {
         Debug.Log("Start Host button clicked");
-        NetworkManager.Singleton.StartHost();
-        NetworkManager.Singleton.SceneManager.LoadScene("GamePlay", LoadSceneMode.Single);
+        // Versuch, den Host zu starten
+        bool success = NetworkManager.Singleton.StartHost();
+
+        if (success)
+        {
+            Debug.Log("Host erfolgreich gestartet.");
+            // Hier könnte man Szenen laden oder UI ausblenden
+            NetworkManager.Singleton.SceneManager.LoadScene("GamePlay", LoadSceneMode.Single);
+        }
+        else
+        {
+            Debug.LogError("Host konnte nicht gestartet werden! (Port besetzt?)");
+            // Optional: Dem Spieler eine Fehlermeldung im UI anzeigen
+        }
+        
     }
 
     public void StartServer()

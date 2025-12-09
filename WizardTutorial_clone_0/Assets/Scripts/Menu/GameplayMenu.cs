@@ -1,85 +1,55 @@
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using TMPro;
 
 public class GameplayMenu : MonoBehaviour
 {
-    // Singleton-Instanz: Damit der GameManager einfach "GameplayMenu.Instance" rufen kann
     public static GameplayMenu Instance { get; private set; }
 
     [Header("UI References")]
-    public Transform handContainer; // Hier werden die Karten-Objekte als "Kinder" reingehängt
-    public Transform trumpCardPosition; // Position der Trumpfkarte
-    public Transform tableArea; // Hier landen die gespielten Karten
+    public Transform handContainer;
+    public Transform trumpCardPosition;
+    public Transform tableArea; // WICHTIG: Muss verknüpft sein!
 
     public GameObject trumpLabel;
 
+    [Header("Buttons")]
+    public GameObject nextStepButton; // Der "Nächste Runde" Button
+
     private void Awake()
     {
-        // SICHERE VARIANTE:
-        // Wir setzen die Instanz einfach neu, egal was vorher war.
-        // Da wir die Szene jedes Mal neu laden, ist das hier sicher.
-        if (Instance != null && Instance != this)
-        {
-            // Optional: Warnung loggen, aber NICHT zerstören, wenn wir uns unsicher sind
-            Debug.LogWarning("Alte GameplayMenu Instanz gefunden und überschrieben.");
-        }
-
         Instance = this;
-
-        
         if (trumpLabel != null) trumpLabel.SetActive(false);
+        if (nextStepButton != null) nextStepButton.SetActive(false);
     }
-    public void PlaceCardOnTable(CardData cardData, GameObject cardPrefab, ulong clientId)
+
+    private void OnDestroy()
     {
-        // Debug-Check: Was kommt an?
-        if (tableArea == null)
-        {
-            Debug.LogError("FEHLER: 'TableArea' ist im GameplayMenu (Inspector) nicht verknüpft!");
-            return;
-        }
-
-        if (cardPrefab == null)
-        {
-            Debug.LogError("FEHLER: 'CardPrefab' wurde als NULL übergeben! Der GameManager hat es verloren.");
-            return;
-        }
-
-        // Wenn wir hier sind, ist alles gut
-        GameObject playedCard = Instantiate(cardPrefab, tableArea);
-
-        CardController controller = playedCard.GetComponent<CardController>();
-        if (controller != null)
-        {
-            controller.SetBaseScale(0.8f);
-            controller.Initialize(cardData);
-
-            // Debug-Bestätigung
-            Debug.Log($"Karte {cardData.color} {cardData.value} erfolgreich auf den Tisch gelegt.");
-        }
+        if (Instance == this) Instance = null;
     }
 
-    // NEU: Tisch abräumen (nach einem Stich)
-    public void ClearTable()
-    {
-        if (tableArea == null) return;
-        foreach (Transform child in tableArea) Destroy(child.gameObject);
-    }
+    // --- Button Events ---
 
     public void OnStartGameClicked()
     {
-        // Wir suchen den GameManager (dieser muss in der Szene existieren!)
         if (NetworkManager.Singleton.IsServer)
         {
-            // Neue Methode in Unity 2023+, früher FindObjectOfType
             var gameManager = FindFirstObjectByType<GameManager>();
-            if (gameManager != null)
+            if (gameManager != null) gameManager.StartGame();
+        }
+    }
+
+    // HIER WAR DER FEHLER: Wir rufen jetzt die richtige Methode auf
+    public void OnNextStepClicked()
+    {
+        if (NetworkManager.Singleton.IsServer)
+        {
+            var gm = FindFirstObjectByType<GameManager>();
+            if (gm != null)
             {
-                gameManager.StartGame();
-            }
-            else
-            {
-                Debug.LogError("GameManager nicht gefunden!");
+                // NEU: StartNextRoundServerRpc statt ContinueGameServerRpc
+                gm.StartNextRoundServerRpc();
             }
         }
     }
@@ -90,58 +60,54 @@ public class GameplayMenu : MonoBehaviour
         SceneManager.LoadScene("MainMenu");
     }
 
-    // Hilfsfunktion: Hand leeren (z.B. bei Rundenbeginn, damit keine alten Karten bleiben)
+    // --- Visualisierungsmethoden ---
+
     public void ClearHand()
     {
         if (handContainer == null) return;
+        foreach (Transform child in handContainer) Destroy(child.gameObject);
+    }
 
-        foreach (Transform child in handContainer)
+    public void PlaceCardOnTable(CardData cardData, GameObject cardPrefab, ulong clientId)
+    {
+        if (tableArea == null || cardPrefab == null) return;
+
+        GameObject playedCard = Instantiate(cardPrefab, tableArea);
+
+        CardController controller = playedCard.GetComponent<CardController>();
+        if (controller != null)
         {
-            Destroy(child.gameObject);
+            controller.SetBaseScale(0.8f);
+            controller.Initialize(cardData);
         }
+    }
+
+    public void ClearTable()
+    {
+        if (tableArea == null) return;
+        foreach (Transform child in tableArea) Destroy(child.gameObject);
     }
 
     public void ShowTrumpCard(CardData cardData, GameObject cardPrefab)
     {
         if (trumpCardPosition == null) return;
-
-        // 1. Alte Karte löschen
         foreach (Transform child in trumpCardPosition) Destroy(child.gameObject);
 
-        // 2. Neue Karte erstellen
         if (cardPrefab != null)
         {
             GameObject trumpCard = Instantiate(cardPrefab, trumpCardPosition);
-
-            // Controller holen
             var controller = trumpCard.GetComponent<CardController>();
-
             if (controller != null)
             {
-                // WICHTIG: Erst skalieren, dann initialisieren
-                controller.SetBaseScale(0.7f); // 0.7 oder 0.8, je nach Geschmack
+                controller.SetBaseScale(0.7f);
                 controller.Initialize(cardData);
             }
-
-            // 3. Text explizit aktivieren
-            if (trumpLabel != null)
-            {
-                Debug.Log("Aktiviere Trumpf-Label!"); // Debug-Log zur Sicherheit
-                trumpLabel.SetActive(true);
-            }
-            else
-            {
-                Debug.LogError("Trump Label Referenz fehlt im GameplayMenu!");
-            }
+            if (trumpLabel != null) trumpLabel.SetActive(true);
         }
     }
 
-    private void OnDestroy()
+    public void ShowNextStepButton(bool show)
     {
-        // Sauber machen beim Beenden
-        if (Instance == this)
-        {
-            Instance = null;
-        }
+        if (nextStepButton != null) nextStepButton.SetActive(show);
     }
 }

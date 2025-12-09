@@ -71,5 +71,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameManager
   ShowTopMostFoldoutHeaderGroup: 1
-  cardPrefab: {fileID: 3808242980029747669, guid: 17efe13a9f1c1364ab114e50bf12fd75, type: 3}
   currentRound: 1
+  cardPrefab: {fileID: 5748263076030860899, guid: 66866e357e26973418f994456a344597, type: 3}
+  currentGameState:
+    m_InternalValue: 0
+  activePlayerIndex:
+    m_InternalValue: 0
