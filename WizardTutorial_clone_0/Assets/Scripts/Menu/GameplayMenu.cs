@@ -12,15 +12,16 @@ public class GameplayMenu : MonoBehaviour
 
     private void Awake()
     {
-        // Singleton-Logik: Es darf nur ein Menü geben
+        // SICHERE VARIANTE:
+        // Wir setzen die Instanz einfach neu, egal was vorher war.
+        // Da wir die Szene jedes Mal neu laden, ist das hier sicher.
         if (Instance != null && Instance != this)
         {
-            Destroy(gameObject);
+            // Optional: Warnung loggen, aber NICHT zerstören, wenn wir uns unsicher sind
+            Debug.LogWarning("Alte GameplayMenu Instanz gefunden und überschrieben.");
         }
-        else
-        {
-            Instance = this;
-        }
+
+        Instance = this;
     }
 
     public void OnStartGameClicked()
@@ -55,6 +56,15 @@ public class GameplayMenu : MonoBehaviour
         foreach (Transform child in handContainer)
         {
             Destroy(child.gameObject);
+        }
+    }
+
+    private void OnDestroy()
+    {
+        // Sauber machen beim Beenden
+        if (Instance == this)
+        {
+            Instance = null;
         }
     }
 }
