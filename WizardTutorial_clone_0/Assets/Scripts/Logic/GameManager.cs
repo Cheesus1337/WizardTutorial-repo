@@ -46,6 +46,7 @@ public class GameManager : NetworkBehaviour
     private CardColor currentTrumpColor;
     private bool isTrumpActive = false;
     private int tricksPlayedInRound = 0;
+    private int maxRounds;
 
     // --- NEU: Server-Gedächtnis für Handkarten (für Regel-Check) ---
     private Dictionary<ulong, List<CardData>> serverHandCards = new Dictionary<ulong, List<CardData>>();
@@ -100,6 +101,14 @@ public class GameManager : NetworkBehaviour
     public void StartGame()
     {
         if (!IsServer) return;
+
+
+        // Echte Wizard Regel: 60 / Spieleranzahl
+        // maxRounds = 60 / playerIds.Count;
+
+        // FÜR TEST-ZWECKE: Nur 3 Runden, damit wir das Ende schnell sehen!
+        maxRounds = 3;
+
         currentRound = 1;
         StartRound();
     }
@@ -496,9 +505,51 @@ public class GameManager : NetworkBehaviour
     public void StartNextRoundServerRpc()
     {
         if (currentGameState.Value != GameState.Scoring) return;
+
         ClearTableClientRpc();
-        currentRound++;
-        StartRound();
+
+        // CHECK: Haben wir das Limit erreicht?
+        if (currentRound >= maxRounds)
+        {
+            EndGame();
+        }
+        else
+        {
+            currentRound++;
+            StartRound();
+        }
+    }
+
+    private void EndGame()
+    {
+        Debug.Log("Spiel ist vorbei!");
+        currentGameState.Value = GameState.GameOver;
+
+        // Gewinner ermitteln
+        int highestScore = int.MinValue;
+        ulong winnerId = 0;
+
+        foreach (var player in playerDataList)
+        {
+            if (player.score > highestScore)
+            {
+                highestScore = player.score;
+                winnerId = player.clientId;
+            }
+        }
+
+        Debug.Log($"Gewinner ist Spieler {winnerId} mit {highestScore} Punkten!");
+
+        ShowGameOverClientRpc(winnerId, highestScore);
+    }
+
+    [ClientRpc]
+    private void ShowGameOverClientRpc(ulong winnerId, int score)
+    {
+        if (GameplayMenu.Instance != null)
+        {
+            GameplayMenu.Instance.ShowGameOverScreen(winnerId, score);
+        }
     }
 
     [ClientRpc]

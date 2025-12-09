@@ -17,12 +17,54 @@ public class GameplayMenu : MonoBehaviour
     [Header("Buttons")]
     public GameObject nextStepButton; // Der "Nächste Runde" Button
 
+    [Header("Game Over UI")]
+    public GameObject gameOverPanel;
+    public TextMeshProUGUI winnerText;
+
     private void Awake()
     {
         Instance = this;
         if (trumpLabel != null) trumpLabel.SetActive(false);
         if (nextStepButton != null) nextStepButton.SetActive(false);
     }
+
+    // In Awake/Start: Panel verstecken!
+    // if (gameOverPanel != null) gameOverPanel.SetActive(false);
+
+    public void ShowGameOverScreen(ulong winnerId, int score)
+    {
+        // DEBUG: Prüfen ob der Befehl ankommt
+        Debug.Log("GameplayMenu: ShowGameOverScreen wurde aufgerufen!");
+
+        if (gameOverPanel != null)
+        {
+            Debug.Log("GameplayMenu: Aktiviere Panel..."); // DEBUG
+            gameOverPanel.SetActive(true);
+
+            // Um ganz sicher zu gehen: In den Vordergrund holen
+            gameOverPanel.transform.SetAsLastSibling();
+
+            if (winnerText != null)
+            {
+                if (winnerId == NetworkManager.Singleton.LocalClientId)
+                    winnerText.text = $"GEWONNEN!\nDu hast {score} Punkte!";
+                else
+                    winnerText.text = $"SPIEL VORBEI\nSpieler {winnerId} gewinnt mit {score} Punkten.";
+            }
+        }
+        else
+        {
+            Debug.LogError("FEHLER: Game Over Panel ist im Inspector nicht verknüpft!");
+        }
+    }
+
+    // Für den Button "Zurück zum Menü"
+    public void OnMainMenuClicked()
+    {
+        NetworkManager.Singleton.Shutdown();
+        SceneManager.LoadScene("MainMenu");
+    }
+
 
     private void OnDestroy()
     {
