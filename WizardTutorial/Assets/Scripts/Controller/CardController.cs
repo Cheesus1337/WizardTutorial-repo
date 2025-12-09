@@ -105,8 +105,26 @@ public class CardController : MonoBehaviour, IPointerEnterHandler, IPointerExitH
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        // Hier prüfen wir, ob die Daten noch da sind
-        Debug.Log($"Karte angeklickt! Daten: {_myCardData.color} {_myCardData.value} (Sollte nicht Red 0 sein)");
-        if (_outline != null) _outline.enabled = !_outline.enabled;
+        // 1. Debugging: Was passiert hier?
+        Debug.Log($"Klick auf: {_myCardData.color} {_myCardData.value}. Phase: {GameManager.Instance.currentGameState.Value}");
+
+        // 2. Check: Spielphase
+        if (GameManager.Instance == null || GameManager.Instance.currentGameState.Value != GameState.Playing)
+        {
+            Debug.Log("Klick ignoriert: Nicht die Spielphase.");
+            return;
+        }
+
+        // 3. Server Call
+        // Wir casten die Enums zu ints, da RPCs einfache Typen mögen
+        GameManager.Instance.PlayCardServerRpc((int)_myCardData.color, (int)_myCardData.value);
+
+        // Outline ausmachen (optional, da Karte eh zerstört wird)
+        if (_outline != null) _outline.enabled = false;
+    }
+
+    public bool CardDataEquals(CardData other)
+    {
+        return _myCardData.color == other.color && _myCardData.value == other.value;
     }
 }

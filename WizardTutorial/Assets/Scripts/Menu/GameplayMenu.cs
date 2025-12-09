@@ -10,6 +10,7 @@ public class GameplayMenu : MonoBehaviour
     [Header("UI References")]
     public Transform handContainer; // Hier werden die Karten-Objekte als "Kinder" reingehängt
     public Transform trumpCardPosition; // Position der Trumpfkarte
+    public Transform tableArea; // Hier landen die gespielten Karten
 
     public GameObject trumpLabel;
 
@@ -28,6 +29,41 @@ public class GameplayMenu : MonoBehaviour
 
         
         if (trumpLabel != null) trumpLabel.SetActive(false);
+    }
+    public void PlaceCardOnTable(CardData cardData, GameObject cardPrefab, ulong clientId)
+    {
+        // Debug-Check: Was kommt an?
+        if (tableArea == null)
+        {
+            Debug.LogError("FEHLER: 'TableArea' ist im GameplayMenu (Inspector) nicht verknüpft!");
+            return;
+        }
+
+        if (cardPrefab == null)
+        {
+            Debug.LogError("FEHLER: 'CardPrefab' wurde als NULL übergeben! Der GameManager hat es verloren.");
+            return;
+        }
+
+        // Wenn wir hier sind, ist alles gut
+        GameObject playedCard = Instantiate(cardPrefab, tableArea);
+
+        CardController controller = playedCard.GetComponent<CardController>();
+        if (controller != null)
+        {
+            controller.SetBaseScale(0.8f);
+            controller.Initialize(cardData);
+
+            // Debug-Bestätigung
+            Debug.Log($"Karte {cardData.color} {cardData.value} erfolgreich auf den Tisch gelegt.");
+        }
+    }
+
+    // NEU: Tisch abräumen (nach einem Stich)
+    public void ClearTable()
+    {
+        if (tableArea == null) return;
+        foreach (Transform child in tableArea) Destroy(child.gameObject);
     }
 
     public void OnStartGameClicked()

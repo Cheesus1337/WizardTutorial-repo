@@ -31,15 +31,28 @@ public class PlayerRowUI : MonoBehaviour
     {
         _myData = data;
 
-        // 1. Texte füllen
+        // 1. Text Update
         if (nameText) nameText.text = data.playerName.ToString();
-        if (scoreText) scoreText.text = data.score.ToString();
+        if (scoreText) scoreText.text = data.score.ToString(); // Das sind die Gesamtpunkte
 
-        // 2. Ansage anzeigen
-        // Zeige die Zahl nur, wenn schon bestätigt wurde. Sonst "-"
+        // 2. Ansage & Stiche anzeigen (NEU: Kombinierte Anzeige)
         if (data.hasBidded)
         {
-            if (bidText) bidText.text = data.currentBid.ToString();
+            if (bidText)
+            {
+                // NEU: Format "Ist / Soll" (Stiche / Ansage)
+                bidText.text = $"{data.tricksTaken} / {data.currentBid}";
+
+                // NEU: Farb-Logik
+                if (data.tricksTaken == data.currentBid)
+                {
+                    bidText.color = Color.green; // Genau richtig (Ziel erreicht)
+                }
+                else
+                {
+                    bidText.color = Color.red;   // Abweichung (Egal ob drüber oder drunter)
+                }
+            }
         }
         else
         {

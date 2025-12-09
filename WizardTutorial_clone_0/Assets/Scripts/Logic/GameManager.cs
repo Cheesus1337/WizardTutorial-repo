@@ -1,7 +1,8 @@
 using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
-using Unity.Collections;
+using static CardEnums;
 
 public enum GameState
 {
@@ -11,6 +12,19 @@ public enum GameState
     Scoring,   // Punktevergabe
     GameOver, // Spielende
 
+}
+
+// Hilfs-Container für die Auswertung
+public struct PlayedCard
+{
+    public ulong playerId;
+    public CardData cardData;
+
+    public PlayedCard(ulong player, CardData card)
+    {
+        playerId = player;
+        cardData = card;
+    }
 }
 
 public class GameManager : NetworkBehaviour
@@ -28,7 +42,16 @@ public class GameManager : NetworkBehaviour
     // Die synchronisierte Liste aller Spielerdaten
     public NetworkList<WizardPlayerData> playerDataList;
 
+    // Speichert, an welcher Stelle im Array "playerIds" wir gerade sind (0 bis Anzahl Spieler)
+    public NetworkVariable<int> activePlayerIndex = new NetworkVariable<int>(0);
+
     private List<ulong> playerIds = new List<ulong>();
+
+    // Logik-Speicher
+    private List<PlayedCard> currentTrickCards = new List<PlayedCard>();
+    private CardColor currentTrumpColor;
+    private bool isTrumpActive = false; // Gibt es überhaupt einen Trumpf? (Nein in letzter Runde oder bei Zauberer-Trumpf)
+
 
     private void Awake()
     {
@@ -125,17 +148,34 @@ public class GameManager : NetworkBehaviour
         if (deck.Count > 0)
         {
             CardData trumpCard = deck[0];
+
+            // Speichern für die Logik!
+            currentTrumpColor = trumpCard.color;
+
+            // Sonderregel: Wenn Zauberer aufgedeckt wird -> Dealer wählt Trumpf (lassen wir für Tutorial simpel: Farbe des Zauberers zählt)
+            // Sonderregel: Wenn Narr aufgedeckt wird -> Kein Trumpf
+            if (trumpCard.value == CardValue.Jester)
+            {
+                isTrumpActive = false;
+                Debug.Log("Narr als Trumpf -> Kein Trumpf in dieser Runde.");
+            }
+            else
+            {
+                isTrumpActive = true;
+                Debug.Log($"Trumpf ist: {currentTrumpColor}");
+            }
+
             UpdateTrumpCardClientRpc(trumpCard.color, trumpCard.value);
         }
         else
         {
-            // Sonderregel letzte Runde: Kein Trumpf
-            UpdateTrumpCardClientRpc(CardEnums.CardColor.Red, (CardEnums.CardValue)99); // 99 als Code für "Kein Trumpf"
+            isTrumpActive = false;
+            Debug.Log("Keine Karten mehr -> Kein Trumpf.");
+            UpdateTrumpCardClientRpc(CardColor.Red, (CardValue)99); // 99 = Kein Trumpf
         }
     }
 
-    // --- RPCs für Bidding ---
-
+   
     // Ein Client sendet seine Ansage an den Server
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
     public void SubmitBidServerRpc(int bid, RpcParams rpcParams = default)
@@ -164,15 +204,207 @@ public class GameManager : NetworkBehaviour
     {
         foreach (var p in playerDataList)
         {
-            if (!p.hasBidded) return; // Einer fehlt noch
+            if (!p.hasBidded) return;
         }
 
-        // Alle haben geboten -> Spielphase startet!
         Debug.Log("Alle Gebote da! Phase wechselt zu Playing.");
         currentGameState.Value = GameState.Playing;
+
+        // NEU: Startspieler festlegen (der links vom Dealer)
+        // Einfachheitshalber fangen wir aktuell immer bei Index 0 an. 
+        // Später machen wir das dynamisch basierend auf der Rundennummer.
+        if (IsServer)
+        {
+            activePlayerIndex.Value = (currentRound - 1) % playerIds.Count;
+            Debug.Log($"Spieler {playerIds[activePlayerIndex.Value]} darf beginnen.");
+        }
+    }
+
+    // --- NEU: Karte ausspielen Logik ---
+
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+    public void PlayCardServerRpc(int colorInt, int valueInt, RpcParams rpcParams = default)
+    {
+        // 1. Validierung: Ist das Spiel überhaupt im Gange?
+        if (currentGameState.Value != GameState.Playing) return;
+
+        ulong senderId = rpcParams.Receive.SenderClientId;
+
+        // 2. Validierung: Ist der Spieler dran?
+        ulong activeId = playerIds[activePlayerIndex.Value];
+        if (senderId != activeId)
+        {
+            Debug.LogWarning($"Spieler {senderId} wollte legen, ist aber nicht dran. Dran ist: {activeId}");
+            return;
+        }
+
+        // 3. Validierung: Besitzt er die Karte? (Sicherheit)
+        // Das überspringen wir für dieses Tutorial, wir vertrauen dem Client vorerst.
+        // Auch die "Bedienpflicht" (Regeln) lassen wir kurz weg, damit wir testen können.
+
+        Debug.Log($"Spieler {senderId} spielt Karte: {(CardEnums.CardColor)colorInt} {(CardEnums.CardValue)valueInt}");
+
+        // 1. Speichern in der Liste
+        CardData playedCard = new CardData((CardColor)colorInt, (CardValue)valueInt);
+        currentTrickCards.Add(new PlayedCard(senderId, playedCard));
+
+        Debug.Log($"Spieler {senderId} spielt: {playedCard}");
+
+        // 2. Visualisieren (Alle Clients)
+        PlayCardClientRpc(colorInt, valueInt, senderId);
+
+        // 3. Nächster Spieler oder Auswerten?
+        if (currentTrickCards.Count == playerIds.Count)
+        {
+            // Stich ist voll -> Auswerten!
+            // Wir warten kurz (Coroutine), damit man die letzte Karte noch sieht, bevor abgeräumt wird?
+            // Fürs Erste machen wir es direkt.
+            EvaluateTrick();
+        }
+        else
+        {
+            // Nächster Spieler ist dran
+            activePlayerIndex.Value = (activePlayerIndex.Value + 1) % playerIds.Count;
+        }
+    }
+    private void EvaluateTrick()
+    {
+        Debug.Log("Werte Stich aus...");
+        ulong winnerId = 0; // Fallback
+        bool winnerFound = false;
+
+        // --- PRIO 1: ZAUBERER ---
+        foreach (var entry in currentTrickCards)
+        {
+            if (entry.cardData.value == CardValue.Wizard)
+            {
+                winnerId = entry.playerId;
+                winnerFound = true;
+                Debug.Log($"Zauberer gefunden! Gewinner: {winnerId}");
+                break; // Der ERSTE Zauberer gewinnt sofort
+            }
+        }
+
+        // --- PRIO 2: TRUMPF ---
+        if (!winnerFound && isTrumpActive)
+        {
+            int highestValue = -1;
+
+            foreach (var entry in currentTrickCards)
+            {
+                // Ist es ein Trumpf? (Und kein Narr/Zauberer, obwohl Zauberer oben schon weg sind)
+                if (entry.cardData.color == currentTrumpColor &&
+                    entry.cardData.value != CardValue.Jester &&
+                    entry.cardData.value != CardValue.Wizard)
+                {
+                    int val = (int)entry.cardData.value;
+                    if (val > highestValue)
+                    {
+                        highestValue = val;
+                        winnerId = entry.playerId;
+                        winnerFound = true;
+                    }
+                }
+            }
+            if (winnerFound) Debug.Log($"Höchster Trumpf gewinnt: {winnerId}");
+        }
+
+        // --- PRIO 3: BEDIENFARBE ---
+        if (!winnerFound)
+        {
+            // Bedienfarbe ermitteln (Erste Karte, die kein Narr ist)
+            CardColor leadColor = currentTrickCards[0].cardData.color;
+            bool leadColorFound = false;
+
+            // Suche die erste Nicht-Narr Karte für die Farbe
+            foreach (var entry in currentTrickCards)
+            {
+                if (entry.cardData.value != CardValue.Jester)
+                {
+                    leadColor = entry.cardData.color;
+                    leadColorFound = true;
+                    break;
+                }
+            }
+
+            if (leadColorFound) // Normalfall
+            {
+                int highestValue = -1;
+                foreach (var entry in currentTrickCards)
+                {
+                    if (entry.cardData.color == leadColor &&
+                        entry.cardData.value != CardValue.Jester &&
+                        entry.cardData.value != CardValue.Wizard)
+                    {
+                        int val = (int)entry.cardData.value;
+                        if (val > highestValue)
+                        {
+                            highestValue = val;
+                            winnerId = entry.playerId;
+                            winnerFound = true;
+                        }
+                    }
+                }
+                Debug.Log($"Höchste Farbe ({leadColor}) gewinnt: {winnerId}");
+            }
+            else
+            {
+                // Sonderfall PRIO 4: NUR Narren im Stich
+                // Der erste Spieler gewinnt
+                winnerId = currentTrickCards[0].playerId;
+                Debug.Log("Nur Narren! Erster Spieler gewinnt.");
+            }
+        }
+
+        // --- ENDE DES STICHS ---
+        ProcessTrickResult(winnerId);
+    }
+    private void ProcessTrickResult(ulong winnerId)
+    {
+        // 1. Daten Update (Stich zählen)
+        for (int i = 0; i < playerDataList.Count; i++)
+        {
+            if (playerDataList[i].clientId == winnerId)
+            {
+                var data = playerDataList[i];
+                data.tricksTaken++; // +1 Stich
+                playerDataList[i] = data; // Sync
+                break;
+            }
+        }
+
+        // 2. Tisch aufräumen & Gewinner beginnt
+        EndTrickClientRpc(winnerId);
+
+        // 3. Logik für nächsten Zug
+        // Gewinner wird neuer Startspieler
+        // Wir müssen den Index des Gewinners in der playerIds Liste finden
+        int winnerIndex = playerIds.IndexOf(winnerId);
+        activePlayerIndex.Value = winnerIndex;
+
+        // 4. Liste leeren für nächsten Stich
+        currentTrickCards.Clear();
+
+        // 5. TODO: Prüfen ob Runde vorbei ist (Handkarten leer?)
+        // Das machen wir im nächsten Schritt
     }
 
     // --- Deine existierenden ClientRPCs ---
+
+    [ClientRpc]
+    private void EndTrickClientRpc(ulong winnerId)
+    {
+        Debug.Log($"Stich geht an Spieler {winnerId}!");
+
+        // Tisch leeren
+        if (GameplayMenu.Instance != null)
+        {
+            // Hier wäre eine kleine Verzögerung cool (Coroutine), damit man sieht wer gewonnen hat
+            // Für jetzt: Hartes Löschen
+            GameplayMenu.Instance.ClearTable();
+        }
+    }
+
     [ClientRpc]
     private void ReceiveHandCardsClientRpc(int[] colors, int[] values, ClientRpcParams clientRpcParams = default)
     {
@@ -186,6 +418,36 @@ public class GameManager : NetworkBehaviour
                 GameObject newCard = Instantiate(cardPrefab, GameplayMenu.Instance.handContainer);
                 CardController controller = newCard.GetComponent<CardController>();
                 if (controller != null) controller.Initialize(data);
+            }
+        }
+    }
+
+    [ClientRpc]
+    private void PlayCardClientRpc(int color, int value, ulong playerId)
+    {
+        CardData data = new CardData((CardEnums.CardColor)color, (CardEnums.CardValue)value);
+
+        // 1. Auf den Tisch legen (Visuell)
+        if (GameplayMenu.Instance != null)
+        {
+            GameplayMenu.Instance.PlaceCardOnTable(data, cardPrefab, playerId);
+        }
+
+        // 2. WICHTIG: Wenn ICH der Spieler war, muss die Karte aus meiner Hand verschwinden!
+        if (playerId == NetworkManager.Singleton.LocalClientId)
+        {
+            // Wir suchen die Karte in unserer Hand und zerstören sie
+            if (GameplayMenu.Instance != null && GameplayMenu.Instance.handContainer != null)
+            {
+                foreach (Transform child in GameplayMenu.Instance.handContainer)
+                {
+                    CardController cc = child.GetComponent<CardController>();
+                    if (cc != null && cc.CardDataEquals(data)) // Wir brauchen eine Vergleichsmethode im Controller!
+                    {
+                        Destroy(child.gameObject);
+                        break;
+                    }
+                }
             }
         }
     }
