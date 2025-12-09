@@ -122,6 +122,7 @@ public class GameManager : NetworkBehaviour
             };
 
             ReceiveHandCardsClientRpc(colors, values, clientRpcParams);
+            Debug.Log($"Habe {handCards.Count} Karten an Client {clientId} gesendet.");
         }
     }
 

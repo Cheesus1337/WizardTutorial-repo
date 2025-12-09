@@ -384,10 +384,10 @@ MonoBehaviour:
   backgroundImage: {fileID: 5326246251381076464}
   valueTopRight: {fileID: 7634909295005329349}
   valueBottomLeft: {fileID: 3952177381623462043}
+  cardTheme: {fileID: 11400000, guid: e0592dfe849bd9c4aac417dc206fa30e, type: 2}
   cardData:
     color: 0
     value: 0
-  cardTheme: {fileID: 11400000, guid: e0592dfe849bd9c4aac417dc206fa30e, type: 2}
 --- !u!114 &2086249090050333410
 MonoBehaviour:
   m_ObjectHideFlags: 0

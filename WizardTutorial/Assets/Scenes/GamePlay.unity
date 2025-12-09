@@ -1210,6 +1210,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 825041503}
     m_Modifications:
+    - target: {fileID: 1548744127834481200, guid: 17efe13a9f1c1364ab114e50bf12fd75, type: 3}
+      propertyPath: valueTopRight
+      value: 
+      objectReference: {fileID: 2816921122909193321}
     - target: {fileID: 2429675937576771198, guid: 17efe13a9f1c1364ab114e50bf12fd75, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
@@ -1299,6 +1303,17 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 17efe13a9f1c1364ab114e50bf12fd75, type: 3}
+--- !u!114 &2816921122909193321 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 7634909295005329349, guid: 17efe13a9f1c1364ab114e50bf12fd75, type: 3}
+  m_PrefabInstance: {fileID: 2816921122909193320}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.TextMeshPro::TMPro.TextMeshProUGUI
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
