@@ -40,17 +40,28 @@ public class PlayerRowUI : MonoBehaviour
         {
             if (bidText)
             {
-                // NEU: Format "Ist / Soll" (Stiche / Ansage)
                 bidText.text = $"{data.tricksTaken} / {data.currentBid}";
 
-                // NEU: Farb-Logik
-                if (data.tricksTaken == data.currentBid)
+                // Farb-Logik 
+                // Checken, ob wir in der "Scoring" Phase sind (Runde vorbei)
+                bool isRoundOver = false;
+                if (GameManager.Instance != null)
                 {
-                    bidText.color = Color.green; // Genau richtig (Ziel erreicht)
+                    isRoundOver = GameManager.Instance.currentGameState.Value == GameState.Scoring;
+                }
+
+                if (isRoundOver)
+                {
+                    // Runde vorbei -> Zeige Ergebnis in Farbe
+                    if (data.tricksTaken == data.currentBid)
+                        bidText.color = Color.green; // Richtig!
+                    else
+                        bidText.color = Color.red;   // Falsch!
                 }
                 else
                 {
-                    bidText.color = Color.red;   // Abweichung (Egal ob dr¸ber oder drunter)
+                    // Spiel l‰uft noch -> Neutral weiﬂ
+                    bidText.color = Color.white;
                 }
             }
         }

@@ -51,6 +51,7 @@ public class GameManager : NetworkBehaviour
     private List<PlayedCard> currentTrickCards = new List<PlayedCard>();
     private CardColor currentTrumpColor;
     private bool isTrumpActive = false; // Gibt es überhaupt einen Trumpf? (Nein in letzter Runde oder bei Zauberer-Trumpf)
+    private int tricksPlayedInRound = 0;
 
 
     private void Awake()
@@ -110,6 +111,7 @@ public class GameManager : NetworkBehaviour
 
     private void StartRound()
     {
+        tricksPlayedInRound = 0; // Reset
         Debug.Log($"Starte Runde {currentRound}.");
 
         // 1. Status auf "Bidding" setzen
@@ -367,8 +369,8 @@ public class GameManager : NetworkBehaviour
             if (playerDataList[i].clientId == winnerId)
             {
                 var data = playerDataList[i];
-                data.tricksTaken++; // +1 Stich
-                playerDataList[i] = data; // Sync
+                data.tricksTaken++;
+                playerDataList[i] = data;
                 break;
             }
         }
@@ -376,17 +378,68 @@ public class GameManager : NetworkBehaviour
         // 2. Tisch aufräumen & Gewinner beginnt
         EndTrickClientRpc(winnerId);
 
-        // 3. Logik für nächsten Zug
-        // Gewinner wird neuer Startspieler
-        // Wir müssen den Index des Gewinners in der playerIds Liste finden
-        int winnerIndex = playerIds.IndexOf(winnerId);
-        activePlayerIndex.Value = winnerIndex;
+        // 3. Zähler erhöhen
+        tricksPlayedInRound++;
 
-        // 4. Liste leeren für nächsten Stich
+        // 4. CHECK: Ist die Runde vorbei?
+        if (tricksPlayedInRound == currentRound)
+        {
+            Debug.Log("Runde beendet! Berechne Punkte...");
+            CalculateScores();
+        }
+        else
+        {
+            // Runde geht weiter -> Gewinner spielt aus
+            int winnerIndex = playerIds.IndexOf(winnerId);
+            activePlayerIndex.Value = winnerIndex;
+            currentTrickCards.Clear();
+        }
+    }
+
+    private void CalculateScores()
+    {
+        // Punkte berechnen nach Wizard-Regeln
+        for (int i = 0; i < playerDataList.Count; i++)
+        {
+            var data = playerDataList[i];
+            int points = 0;
+            int diff = Mathf.Abs(data.currentBid - data.tricksTaken);
+
+            if (diff == 0)
+            {
+                // Richtig getippt: 20 Punkte + 10 pro Stich
+                points = 20 + (10 * data.tricksTaken);
+            }
+            else
+            {
+                // Falsch getippt: -10 Punkte pro Stich Abweichung
+                points = -(10 * diff);
+            }
+
+            data.score += points; // Auf Gesamtpunkte addieren
+            playerDataList[i] = data; // Schreiben triggert Sync
+
+            Debug.Log($"Spieler {data.clientId}: {points} Punkte diese Runde. Total: {data.score}");
+        }
+
+        // Status ändern -> Das signalisiert dem UI "Runde vorbei, Farben zeigen!"
+        currentGameState.Value = GameState.Scoring;
+
+        // Liste leeren (wichtig, sonst bleiben Kartenreste für die nächste Runde im Speicher)
         currentTrickCards.Clear();
 
-        // 5. TODO: Prüfen ob Runde vorbei ist (Handkarten leer?)
-        // Das machen wir im nächsten Schritt
+        // TODO: Hier könnte man später einen Timer starten, um automatisch die nächste Runde zu beginnen
+        // Z.B. Invoke("StartNextRound", 5f);
+    }
+
+    // Eine Hilfsmethode, um manuell oder per Timer weiterzumachen
+    public void StartNextRound()
+    {
+        if (!IsServer) return;
+
+        currentRound++;
+        // TODO: Check Max Rounds (60 / Spieleranzahl)
+        StartRound();
     }
 
     // --- Deine existierenden ClientRPCs ---
