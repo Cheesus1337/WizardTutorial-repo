@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+ï»¿using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
@@ -7,14 +7,13 @@ using static CardEnums;
 public enum GameState
 {
     Setup,
-    Bidding,        // Vorhersage
-    Playing,        // Ausspielen
-    TrickCompleted, // Stich beendet (optionaler Wartezustand)
-    Scoring,        // Punktevergabe (Rundenende)
-    GameOver        // Spielende
+    Bidding,
+    Playing,
+    TrickCompleted,
+    Scoring,
+    GameOver
 }
 
-// Hilfs-Container für die Auswertung
 public struct PlayedCard
 {
     public ulong playerId;
@@ -36,13 +35,8 @@ public class GameManager : NetworkBehaviour
     [Header("References")]
     [SerializeField] private GameObject cardPrefab;
 
-    // --- Status und Daten ---
     public NetworkVariable<GameState> currentGameState = new NetworkVariable<GameState>(GameState.Setup);
-
-    // Die synchronisierte Liste aller Spielerdaten
     public NetworkList<WizardPlayerData> playerDataList;
-
-    // Speichert, an welcher Stelle im Array "playerIds" wir gerade sind
     public NetworkVariable<int> activePlayerIndex = new NetworkVariable<int>(0);
 
     private List<ulong> playerIds = new List<ulong>();
@@ -53,9 +47,8 @@ public class GameManager : NetworkBehaviour
     private bool isTrumpActive = false;
     private int tricksPlayedInRound = 0;
 
-    // (tempTrickWinnerId wird aktuell nicht benötigt, da wir sofort weitermachen, 
-    // aber wir lassen es drin, falls wir später Pausen einbauen wollen)
-    private ulong tempTrickWinnerId;
+    // --- NEU: Server-GedÃ¤chtnis fÃ¼r Handkarten (fÃ¼r Regel-Check) ---
+    private Dictionary<ulong, List<CardData>> serverHandCards = new Dictionary<ulong, List<CardData>>();
 
     private void Awake()
     {
@@ -70,7 +63,6 @@ public class GameManager : NetworkBehaviour
         if (IsServer)
         {
             NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
-
             if (NetworkManager.Singleton.ConnectedClientsIds.Count > 0)
             {
                 foreach (ulong uid in NetworkManager.Singleton.ConnectedClientsIds)
@@ -87,7 +79,6 @@ public class GameManager : NetworkBehaviour
             if (!playerIds.Contains(clientId))
             {
                 playerIds.Add(clientId);
-
                 WizardPlayerData newPlayer = new WizardPlayerData
                 {
                     clientId = clientId,
@@ -98,6 +89,10 @@ public class GameManager : NetworkBehaviour
                     hasBidded = false
                 };
                 playerDataList.Add(newPlayer);
+
+                // Speicherplatz fÃ¼r Handkarten anlegen
+                if (!serverHandCards.ContainsKey(clientId))
+                    serverHandCards.Add(clientId, new List<CardData>());
             }
         }
     }
@@ -111,13 +106,11 @@ public class GameManager : NetworkBehaviour
 
     private void StartRound()
     {
-        tricksPlayedInRound = 0; // Reset für neue Runde
+        tricksPlayedInRound = 0;
         Debug.Log($"Starte Runde {currentRound}.");
 
-        // 1. Status auf "Bidding" setzen
         currentGameState.Value = GameState.Bidding;
 
-        // 2. Ansagen zurücksetzen
         for (int i = 0; i < playerDataList.Count; i++)
         {
             var data = playerDataList[i];
@@ -127,18 +120,29 @@ public class GameManager : NetworkBehaviour
             playerDataList[i] = data;
         }
 
-        // 3. Karten verteilen & Trumpf
         List<CardData> deck = DeckBuilder.GenerateStandardDeck();
         DeckBuilder.ShuffleDeck(deck);
 
+        // --- HIER SPEICHERN WIR JETZT DIE KARTEN AUCH AUF DEM SERVER ---
         foreach (ulong clientId in playerIds)
         {
+            serverHandCards[clientId].Clear(); // Alte Hand lÃ¶schen
+
             List<CardData> handCards = new List<CardData>();
             for (int i = 0; i < currentRound; i++)
             {
-                if (deck.Count > 0) { handCards.Add(deck[0]); deck.RemoveAt(0); }
+                if (deck.Count > 0)
+                {
+                    CardData drawnCard = deck[0];
+                    handCards.Add(drawnCard);
+                    deck.RemoveAt(0);
+                }
             }
 
+            // Speichern fÃ¼r Validierung!
+            serverHandCards[clientId].AddRange(handCards);
+
+            // Senden an Client
             int[] colors = new int[handCards.Count];
             int[] values = new int[handCards.Count];
             for (int k = 0; k < handCards.Count; k++) { colors[k] = (int)handCards[k].color; values[k] = (int)handCards[k].value; }
@@ -155,30 +159,24 @@ public class GameManager : NetworkBehaviour
             if (trumpCard.value == CardValue.Jester)
             {
                 isTrumpActive = false;
-                Debug.Log("Narr als Trumpf -> Kein Trumpf in dieser Runde.");
             }
             else
             {
                 isTrumpActive = true;
-                Debug.Log($"Trumpf ist: {currentTrumpColor}");
             }
             UpdateTrumpCardClientRpc(trumpCard.color, trumpCard.value);
         }
         else
         {
             isTrumpActive = false;
-            Debug.Log("Keine Karten mehr -> Kein Trumpf.");
             UpdateTrumpCardClientRpc(CardColor.Red, (CardValue)99);
         }
     }
-
-    // --- RPCs: Bidding ---
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
     public void SubmitBidServerRpc(int bid, RpcParams rpcParams = default)
     {
         ulong senderId = rpcParams.Receive.SenderClientId;
-        Debug.Log($"Client {senderId} sagt {bid} Stiche an.");
 
         for (int i = 0; i < playerDataList.Count; i++)
         {
@@ -201,14 +199,11 @@ public class GameManager : NetworkBehaviour
             if (!p.hasBidded) return;
         }
 
-        Debug.Log("Alle Gebote da! Phase wechselt zu Playing.");
         currentGameState.Value = GameState.Playing;
 
         if (IsServer)
         {
-            // Startspieler festlegen (einfachheitshalber rotierend nach Runde)
             activePlayerIndex.Value = (currentRound - 1) % playerIds.Count;
-            Debug.Log($"Spieler {playerIds[activePlayerIndex.Value]} darf beginnen.");
         }
     }
 
@@ -222,22 +217,26 @@ public class GameManager : NetworkBehaviour
         ulong senderId = rpcParams.Receive.SenderClientId;
         ulong activeId = playerIds[activePlayerIndex.Value];
 
-        if (senderId != activeId)
+        if (senderId != activeId) return;
+
+        CardData cardToPlay = new CardData((CardColor)colorInt, (CardValue)valueInt);
+
+        // --- REGEL-CHECK ---
+        if (!IsValidMove(senderId, cardToPlay))
         {
-            Debug.LogWarning($"Spieler {senderId} wollte legen, ist aber nicht dran. Dran ist: {activeId}");
+            Debug.LogWarning($"Spieler {senderId} wollte {cardToPlay} legen - REGELVERSTOáºž! (Bedienpflicht)");
+            // Wir brechen einfach ab. Der Client bekommt keine Antwort -> Karte bleibt in der Hand.
             return;
         }
 
-        // Karte speichern
-        CardData playedCard = new CardData((CardColor)colorInt, (CardValue)valueInt);
-        currentTrickCards.Add(new PlayedCard(senderId, playedCard));
+        // Karte aus Server-GedÃ¤chtnis entfernen
+        RemoveCardFromServerHand(senderId, cardToPlay);
 
-        Debug.Log($"Spieler {senderId} spielt: {playedCard}");
+        currentTrickCards.Add(new PlayedCard(senderId, cardToPlay));
+        Debug.Log($"Spieler {senderId} spielt legal: {cardToPlay}");
 
-        // Allen Clients anzeigen
         PlayCardClientRpc(colorInt, valueInt, senderId);
 
-        // Prüfen ob Stich voll ist
         if (currentTrickCards.Count == playerIds.Count)
         {
             EvaluateTrick();
@@ -248,9 +247,123 @@ public class GameManager : NetworkBehaviour
         }
     }
 
+    // --- NEU: Die Regel-Polizei ---
+    private bool IsValidMove(ulong playerId, CardData cardToPlay)
+    {
+        // 1. Karten-Besitz prÃ¼fen (Sicherheit)
+        // Hat der Spieler diese Karte Ã¼berhaupt auf der Hand?
+        if (!PlayerHasCard(playerId, cardToPlay))
+        {
+            Debug.LogError($"Cheat-Versuch? Spieler {playerId} hat Karte {cardToPlay} nicht!");
+            return false;
+        }
+
+        // 2. Zauberer und Narren sind IMMER erlaubt
+        if (cardToPlay.value == CardValue.Wizard || cardToPlay.value == CardValue.Jester)
+        {
+            return true;
+        }
+
+        // 3. Ist es die erste Karte im Stich? -> Alles erlaubt
+        if (currentTrickCards.Count == 0)
+        {
+            return true;
+        }
+
+        // 4. Bedienpflicht prÃ¼fen
+        CardColor leadColor = GetLeadColor();
+
+        // Wenn es keine Bedienfarbe gibt (z.B. nur Narren oder erster war Zauberer), ist alles erlaubt
+        if (leadColor == CardColor.Red && IsLeadColorUndefined())
+        {
+            return true;
+        }
+
+        // Hat der Spieler die Bedienfarbe auf der Hand?
+        if (PlayerHasColor(playerId, leadColor))
+        {
+            // JA: Er muss bedienen! (AuÃŸer er spielt Zauberer/Narr, siehe Punkt 2)
+            if (cardToPlay.color == leadColor)
+            {
+                return true; // Er bedient brav
+            }
+            else
+            {
+                return false; // Er hat die Farbe, spielt aber was anderes -> VERBOTEN!
+            }
+        }
+        else
+        {
+            // NEIN: Er hat die Farbe nicht -> Er darf alles spielen (abwerfen oder trumpfen)
+            return true;
+        }
+    }
+
+    // Hilfsmethode: Bestimmt die angespielte Farbe
+    private CardColor GetLeadColor()
+    {
+        foreach (var played in currentTrickCards)
+        {
+            if (played.cardData.value != CardValue.Jester && played.cardData.value != CardValue.Wizard)
+            {
+                return played.cardData.color;
+            }
+            if (played.cardData.value == CardValue.Wizard) return CardColor.Red; // Zauberer -> Farbe egal (Dummy Return)
+        }
+        return CardColor.Red; // Fallback (nur Narren)
+    }
+
+    // Hilfsmethode: PrÃ¼ft ob Farbe "definiert" ist (also ob eine Nicht-Narr/Zauberer Karte liegt)
+    private bool IsLeadColorUndefined()
+    {
+        foreach (var played in currentTrickCards)
+        {
+            if (played.cardData.value == CardValue.Wizard) return true; // Zauberer erÃ¶ffnet -> keine Farbe
+            if (played.cardData.value != CardValue.Jester) return false; // Farbe gefunden!
+        }
+        return true; // Nur Narren oder leer
+    }
+
+    private bool PlayerHasCard(ulong playerId, CardData card)
+    {
+        if (!serverHandCards.ContainsKey(playerId)) return false;
+        foreach (var c in serverHandCards[playerId])
+        {
+            if (c.color == card.color && c.value == card.value) return true;
+        }
+        return false;
+    }
+
+    private bool PlayerHasColor(ulong playerId, CardColor color)
+    {
+        if (!serverHandCards.ContainsKey(playerId)) return false;
+        foreach (var c in serverHandCards[playerId])
+        {
+            // Zauberer und Narren zÃ¤hlen NICHT als Farbe
+            if (c.color == color && c.value != CardValue.Wizard && c.value != CardValue.Jester)
+                return true;
+        }
+        return false;
+    }
+
+    private void RemoveCardFromServerHand(ulong playerId, CardData card)
+    {
+        if (!serverHandCards.ContainsKey(playerId)) return;
+
+        var hand = serverHandCards[playerId];
+        for (int i = 0; i < hand.Count; i++)
+        {
+            if (hand[i].color == card.color && hand[i].value == card.value)
+            {
+                hand.RemoveAt(i);
+                break;
+            }
+        }
+    }
+    // ----------------------------------------------------
+
     private void EvaluateTrick()
     {
-        Debug.Log("Werte Stich aus...");
         ulong winnerId = 0;
         bool winnerFound = false;
 
@@ -292,7 +405,6 @@ public class GameManager : NetworkBehaviour
             CardColor leadColor = currentTrickCards[0].cardData.color;
             bool leadColorFound = false;
 
-            // Suche erste Nicht-Narr Karte für Farbe
             foreach (var entry in currentTrickCards)
             {
                 if (entry.cardData.value != CardValue.Jester)
@@ -324,7 +436,6 @@ public class GameManager : NetworkBehaviour
             }
             else
             {
-                // Nur Narren -> Erster Spieler gewinnt
                 winnerId = currentTrickCards[0].playerId;
             }
         }
@@ -334,46 +445,35 @@ public class GameManager : NetworkBehaviour
 
     private void ProcessTrickResult(ulong winnerId)
     {
-        // 1. Daten Update (Stich zählen)
         for (int i = 0; i < playerDataList.Count; i++)
         {
             if (playerDataList[i].clientId == winnerId)
             {
                 var data = playerDataList[i];
                 data.tricksTaken++;
-                playerDataList[i] = data; // Scoreboard Update
+                playerDataList[i] = data;
                 break;
             }
         }
 
         tricksPlayedInRound++;
 
-        // 2. Entscheidung: Runde vorbei oder weiter?
         if (tricksPlayedInRound == currentRound)
         {
-            // --- RUNDENENDE ---
             Debug.Log("Runde beendet! Berechne Punkte.");
-            // Hier räumen wir NICHT ab, damit man das Ergebnis sieht!
             CalculateScores();
         }
         else
         {
-            // --- NÄCHSTER STICH ---
-            // Tisch abräumen (automatisch weiter)
             EndTrickClientRpc(winnerId);
-
-            // Nächster Spieler ist der Gewinner
             int winnerIndex = playerIds.IndexOf(winnerId);
             activePlayerIndex.Value = winnerIndex;
-
-            // Liste leeren
             currentTrickCards.Clear();
         }
     }
 
     private void CalculateScores()
     {
-        // Punkte berechnen
         for (int i = 0; i < playerDataList.Count; i++)
         {
             var data = playerDataList[i];
@@ -387,58 +487,39 @@ public class GameManager : NetworkBehaviour
             playerDataList[i] = data;
         }
 
-        // Status auf Scoring setzen (Scoreboard wird bunt)
         currentGameState.Value = GameState.Scoring;
-
         currentTrickCards.Clear();
-
-        // Button "Nächste Runde" beim Host anzeigen
         ShowRoundEndButtonClientRpc();
     }
 
-    // Dieser RPC wird vom Button geklickt
     [Rpc(SendTo.Server)]
     public void StartNextRoundServerRpc()
     {
         if (currentGameState.Value != GameState.Scoring) return;
-
-        // Jetzt Tisch aufräumen
         ClearTableClientRpc();
-
         currentRound++;
-        // TODO: Max Rounds checken
         StartRound();
     }
-
-    // --- Client RPCs ---
 
     [ClientRpc]
     private void EndTrickClientRpc(ulong winnerId)
     {
-        // Wird NUR mitten in der Runde aufgerufen
-        if (GameplayMenu.Instance != null)
-        {
-            GameplayMenu.Instance.ClearTable();
-        }
+        if (GameplayMenu.Instance != null) GameplayMenu.Instance.ClearTable();
     }
 
     [ClientRpc]
     private void ShowRoundEndButtonClientRpc()
     {
-        if (IsServer && GameplayMenu.Instance != null)
-        {
-            GameplayMenu.Instance.ShowNextStepButton(true);
-        }
+        if (IsServer && GameplayMenu.Instance != null) GameplayMenu.Instance.ShowNextStepButton(true);
     }
 
     [ClientRpc]
     private void ClearTableClientRpc()
     {
-        // Wird beim Start der neuen Runde aufgerufen
         if (GameplayMenu.Instance != null)
         {
             GameplayMenu.Instance.ClearTable();
-            GameplayMenu.Instance.ShowNextStepButton(false); // Button ausblenden
+            GameplayMenu.Instance.ShowNextStepButton(false);
         }
     }
 
@@ -463,14 +544,8 @@ public class GameManager : NetworkBehaviour
     private void PlayCardClientRpc(int color, int value, ulong playerId)
     {
         CardData data = new CardData((CardEnums.CardColor)color, (CardEnums.CardValue)value);
+        if (GameplayMenu.Instance != null) GameplayMenu.Instance.PlaceCardOnTable(data, cardPrefab, playerId);
 
-        // 1. Auf den Tisch legen
-        if (GameplayMenu.Instance != null)
-        {
-            GameplayMenu.Instance.PlaceCardOnTable(data, cardPrefab, playerId);
-        }
-
-        // 2. Aus eigener Hand entfernen
         if (playerId == NetworkManager.Singleton.LocalClientId)
         {
             if (GameplayMenu.Instance != null && GameplayMenu.Instance.handContainer != null)
@@ -491,12 +566,8 @@ public class GameManager : NetworkBehaviour
     [ClientRpc]
     private void UpdateTrumpCardClientRpc(CardEnums.CardColor color, CardEnums.CardValue value)
     {
-        if ((int)value == 99) return; // Kein Trumpf
-
+        if ((int)value == 99) return;
         CardData trumpData = new CardData(color, value);
-        if (GameplayMenu.Instance != null)
-        {
-            GameplayMenu.Instance.ShowTrumpCard(trumpData, cardPrefab);
-        }
+        if (GameplayMenu.Instance != null) GameplayMenu.Instance.ShowTrumpCard(trumpData, cardPrefab);
     }
 }
