@@ -41,6 +41,15 @@ public class CardController : MonoBehaviour, IPointerEnterHandler, IPointerExitH
         UpdateVisuals();
     }
 
+    // NEU: Damit wir die Karte (z.B. als Trumpf) kleiner machen können
+    // und sie auch nach dem Hover/Klick klein bleibt.
+    public void SetBaseScale(float scaleFactor)
+    {
+        _originalScale = Vector3.one * scaleFactor;
+        _hoverScale = _originalScale * 1.1f; // Hover bleibt 10% größer als die neue Basis
+        transform.localScale = _originalScale; // Sofort anwenden
+    }
+
     private void UpdateVisuals()
     {
         // Debugging: Prüfen ob Referenzen da sind

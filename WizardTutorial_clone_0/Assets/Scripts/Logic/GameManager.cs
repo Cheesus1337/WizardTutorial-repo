@@ -124,9 +124,40 @@ public class GameManager : NetworkBehaviour
             ReceiveHandCardsClientRpc(colors, values, clientRpcParams);
             Debug.Log($"Habe {handCards.Count} Karten an Client {clientId} gesendet.");
         }
+
+        if (deck.Count > 0)
+        {
+            CardData trumpCard = deck[0];
+            deck.RemoveAt(0);
+
+            Debug.Log($"Trumpfkarte gezogen: {trumpCard.color} {trumpCard.value}");
+
+            // An ALLE senden (kein ClientRpcParams nötig = Broadcast)
+            UpdateTrumpCardClientRpc(trumpCard.color, trumpCard.value);
+        }
+        else
+        {
+            Debug.Log("Keine Karten mehr im Deck -> Kein Trumpf in dieser Runde.");
+            // Optional: Ein "Leeres" Signal senden, um alte Trümpfe zu löschen
+        }
     }
 
+
+
     // --- RPCs: Kommunikation Server -> Client ---
+
+    [ClientRpc]
+    private void UpdateTrumpCardClientRpc(CardColor color, CardValue value)
+    {
+        CardData trumpData = new CardData(color, value);
+
+        if (GameplayMenu.Instance != null)
+        {
+            // Wir nutzen das gleiche CardPrefab, das wir schon für die Hand haben
+            GameplayMenu.Instance.ShowTrumpCard(trumpData, cardPrefab);
+        }
+    }
+
 
     [ClientRpc]
     private void ReceiveHandCardsClientRpc(int[] colors, int[] values, ClientRpcParams clientRpcParams = default)

@@ -9,6 +9,9 @@ public class GameplayMenu : MonoBehaviour
 
     [Header("UI References")]
     public Transform handContainer; // Hier werden die Karten-Objekte als "Kinder" reingehängt
+    public Transform trumpCardPosition; // Position der Trumpfkarte
+
+    public GameObject trumpLabel;
 
     private void Awake()
     {
@@ -22,6 +25,9 @@ public class GameplayMenu : MonoBehaviour
         }
 
         Instance = this;
+
+        
+        if (trumpLabel != null) trumpLabel.SetActive(false);
     }
 
     public void OnStartGameClicked()
@@ -56,6 +62,41 @@ public class GameplayMenu : MonoBehaviour
         foreach (Transform child in handContainer)
         {
             Destroy(child.gameObject);
+        }
+    }
+
+    public void ShowTrumpCard(CardData cardData, GameObject cardPrefab)
+    {
+        if (trumpCardPosition == null) return;
+
+        // 1. Alte Karte löschen
+        foreach (Transform child in trumpCardPosition) Destroy(child.gameObject);
+
+        // 2. Neue Karte erstellen
+        if (cardPrefab != null)
+        {
+            GameObject trumpCard = Instantiate(cardPrefab, trumpCardPosition);
+
+            // Controller holen
+            var controller = trumpCard.GetComponent<CardController>();
+
+            if (controller != null)
+            {
+                // WICHTIG: Erst skalieren, dann initialisieren
+                controller.SetBaseScale(0.7f); // 0.7 oder 0.8, je nach Geschmack
+                controller.Initialize(cardData);
+            }
+
+            // 3. Text explizit aktivieren
+            if (trumpLabel != null)
+            {
+                Debug.Log("Aktiviere Trumpf-Label!"); // Debug-Log zur Sicherheit
+                trumpLabel.SetActive(true);
+            }
+            else
+            {
+                Debug.LogError("Trump Label Referenz fehlt im GameplayMenu!");
+            }
         }
     }
 
