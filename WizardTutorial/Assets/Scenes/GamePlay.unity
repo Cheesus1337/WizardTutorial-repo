@@ -246,7 +246,7 @@ GameObject:
   - component: {fileID: 211851802}
   - component: {fileID: 211851801}
   m_Layer: 5
-  m_Name: NextStepButton
+  m_Name: NextRoundButton
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1021,12 +1021,10 @@ MonoBehaviour:
   tableArea: {fileID: 1711783024}
   trumpLabel: {fileID: 0}
   nextStepButton: {fileID: 211851799}
-  gameOverPanel: {fileID: 0}
-  winnerText: {fileID: 0}
-  podiumPanel: {fileID: 0}
-  firstPlaceText: {fileID: 0}
-  secondPlaceText: {fileID: 0}
-  thirdPlaceText: {fileID: 0}
+  podiumPanel: {fileID: 2085444386}
+  firstPlaceText: {fileID: 242269077}
+  secondPlaceText: {fileID: 725861013}
+  thirdPlaceText: {fileID: 1301080149}
 --- !u!4 &595958096
 Transform:
   m_ObjectHideFlags: 0
@@ -1544,8 +1542,6 @@ MonoBehaviour:
   tableArea: {fileID: 1711783024}
   trumpLabel: {fileID: 1661103865}
   nextStepButton: {fileID: 211851799}
-  gameOverPanel: {fileID: 0}
-  winnerText: {fileID: 0}
   podiumPanel: {fileID: 2085444386}
   firstPlaceText: {fileID: 242269077}
   secondPlaceText: {fileID: 725861013}

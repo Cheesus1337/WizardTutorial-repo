@@ -33,34 +33,25 @@ public class PlayerRowUI : MonoBehaviour
 
         // 1. Text Update
         if (nameText) nameText.text = data.playerName.ToString();
-        if (scoreText) scoreText.text = data.score.ToString(); // Das sind die Gesamtpunkte
+        if (scoreText) scoreText.text = data.score.ToString();
 
-        // 2. Ansage & Stiche anzeigen (NEU: Kombinierte Anzeige)
+        // 2. Ansage & Stiche anzeigen
+        // (Dein existierender Code mit Farben für Scoring Phase)
         if (data.hasBidded)
         {
             if (bidText)
             {
                 bidText.text = $"{data.tricksTaken} / {data.currentBid}";
-
-                // Farb-Logik 
-                // Checken, ob wir in der "Scoring" Phase sind (Runde vorbei)
                 bool isRoundOver = false;
-                if (GameManager.Instance != null)
-                {
-                    isRoundOver = GameManager.Instance.currentGameState.Value == GameState.Scoring;
-                }
+                if (GameManager.Instance != null) isRoundOver = GameManager.Instance.currentGameState.Value == GameState.Scoring;
 
                 if (isRoundOver)
                 {
-                    // Runde vorbei -> Zeige Ergebnis in Farbe
-                    if (data.tricksTaken == data.currentBid)
-                        bidText.color = Color.green; // Richtig!
-                    else
-                        bidText.color = Color.red;   // Falsch!
+                    if (data.tricksTaken == data.currentBid) bidText.color = Color.green;
+                    else bidText.color = Color.red;
                 }
                 else
                 {
-                    // Spiel läuft noch -> Neutral weiß
                     bidText.color = Color.white;
                 }
             }
@@ -70,21 +61,25 @@ public class PlayerRowUI : MonoBehaviour
             if (bidText) bidText.text = "-";
         }
 
-        // 3. Eingabe-Logik: Wann darf ich tippen?
-        // Bedingung: Es ist MEINE Zeile + Phase ist "Bidding" + Ich habe noch NICHT "OK" gedrückt
+        // 3. Eingabe Logik: Wann darf ich tippen?
         bool isMyRow = data.clientId == NetworkManager.Singleton.LocalClientId;
         bool isBiddingPhase = false;
+        bool isMyTurn = false; // NEU
 
         if (GameManager.Instance != null)
         {
             isBiddingPhase = GameManager.Instance.currentGameState.Value == GameState.Bidding;
+
+            // NEU: Wir fragen den Manager, ob diese ClientID gerade "dran" ist (basierend auf activePlayerIndex)
+            isMyTurn = GameManager.Instance.IsPlayerTurn(data.clientId);
         }
 
-        if (isMyRow && isBiddingPhase && !data.hasBidded)
+        // NEUE BEDINGUNG: isMyTurn muss true sein!
+        if (isMyRow && isBiddingPhase && !data.hasBidded && isMyTurn)
         {
             if (inputContainer) inputContainer.SetActive(true);
 
-            // Initialen Wert anzeigen (damit man sieht, was man drückt)
+            // Initialen Wert anzeigen
             if (bidText) bidText.text = _tempBid.ToString();
         }
         else

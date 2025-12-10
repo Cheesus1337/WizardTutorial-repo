@@ -14,6 +14,20 @@ public enum GameState
     GameOver
 }
 
+// --- WICHTIG: Dieses Struct muss hier PUBLIC stehen, damit GameplayMenu es sieht ---
+public struct PlayerResult : INetworkSerializable
+{
+    public FixedString64Bytes playerName;
+    public int score;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref playerName);
+        serializer.SerializeValue(ref score);
+    }
+}
+// ----------------------------------------------------------------------------------
+
 public struct PlayedCard
 {
     public ulong playerId;
@@ -26,25 +40,14 @@ public struct PlayedCard
     }
 }
 
-// Damit wir Listen über das Netzwerk schicken können
-public struct PlayerResult : INetworkSerializable
-{
-    public FixedString64Bytes playerName; // Netzwerk-sicherer String
-    public int score;
-
-    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-    {
-        serializer.SerializeValue(ref playerName);
-        serializer.SerializeValue(ref score);
-    }
-}
-
 public class GameManager : NetworkBehaviour
 {
     public static GameManager Instance { get; private set; }
 
     [Header("Game Settings")]
     [SerializeField] private int currentRound = 1;
+    [SerializeField] private int maxRounds = 3;
+
     [Header("References")]
     [SerializeField] private GameObject cardPrefab;
 
@@ -59,9 +62,7 @@ public class GameManager : NetworkBehaviour
     private CardColor currentTrumpColor;
     private bool isTrumpActive = false;
     private int tricksPlayedInRound = 0;
-    private int maxRounds;
 
-    // --- NEU: Server-Gedächtnis für Handkarten (für Regel-Check) ---
     private Dictionary<ulong, List<CardData>> serverHandCards = new Dictionary<ulong, List<CardData>>();
 
     private void Awake()
@@ -104,24 +105,32 @@ public class GameManager : NetworkBehaviour
                 };
                 playerDataList.Add(newPlayer);
 
-                // Speicherplatz für Handkarten anlegen
                 if (!serverHandCards.ContainsKey(clientId))
                     serverHandCards.Add(clientId, new List<CardData>());
             }
         }
     }
 
+    // Helper für UI
+    public bool IsPlayerTurn(ulong clientId)
+    {
+        // Wir nutzen die synchronisierte NetworkList statt der lokalen playerIds Liste
+        if (playerDataList == null || playerDataList.Count == 0) return false;
+
+        int index = activePlayerIndex.Value;
+
+        // Sicherheitscheck: Ist der Index gültig?
+        if (index >= 0 && index < playerDataList.Count)
+        {
+            // Wir vergleichen die ID mit der ID im synchronisierten Datensatz
+            return playerDataList[index].clientId == clientId;
+        }
+        return false;
+    }
+
     public void StartGame()
     {
         if (!IsServer) return;
-
-
-        // Echte Wizard Regel: 60 / Spieleranzahl
-        // maxRounds = 60 / playerIds.Count;
-
-        // FÜR TEST-ZWECKE: Nur 3 Runden, damit wir das Ende schnell sehen!
-        maxRounds = 3;
-
         currentRound = 1;
         StartRound();
     }
@@ -142,29 +151,34 @@ public class GameManager : NetworkBehaviour
             playerDataList[i] = data;
         }
 
+        // --- Dealer Rotation ---
+        if (IsServer)
+        {
+            // Wir nutzen playerDataList.Count statt playerIds.Count für Konsistenz
+            int count = playerDataList.Count;
+            if (count > 0)
+            {
+                int dealerIndex = (currentRound - 1) % count;
+                int starterIndex = (dealerIndex + 1) % count;
+                activePlayerIndex.Value = starterIndex;
+                Debug.Log($"Runde {currentRound}: Starter Index ist {starterIndex}");
+            }
+        }
+
+        // Karten verteilen
         List<CardData> deck = DeckBuilder.GenerateStandardDeck();
         DeckBuilder.ShuffleDeck(deck);
 
-        // --- HIER SPEICHERN WIR JETZT DIE KARTEN AUCH AUF DEM SERVER ---
         foreach (ulong clientId in playerIds)
         {
-            serverHandCards[clientId].Clear(); // Alte Hand löschen
-
+            serverHandCards[clientId].Clear();
             List<CardData> handCards = new List<CardData>();
             for (int i = 0; i < currentRound; i++)
             {
-                if (deck.Count > 0)
-                {
-                    CardData drawnCard = deck[0];
-                    handCards.Add(drawnCard);
-                    deck.RemoveAt(0);
-                }
+                if (deck.Count > 0) { handCards.Add(deck[0]); deck.RemoveAt(0); }
             }
-
-            // Speichern für Validierung!
             serverHandCards[clientId].AddRange(handCards);
 
-            // Senden an Client
             int[] colors = new int[handCards.Count];
             int[] values = new int[handCards.Count];
             for (int k = 0; k < handCards.Count; k++) { colors[k] = (int)handCards[k].color; values[k] = (int)handCards[k].value; }
@@ -173,19 +187,12 @@ public class GameManager : NetworkBehaviour
             ReceiveHandCardsClientRpc(colors, values, clientRpcParams);
         }
 
+        // Trumpf
         if (deck.Count > 0)
         {
             CardData trumpCard = deck[0];
             currentTrumpColor = trumpCard.color;
-
-            if (trumpCard.value == CardValue.Jester)
-            {
-                isTrumpActive = false;
-            }
-            else
-            {
-                isTrumpActive = true;
-            }
+            isTrumpActive = (trumpCard.value != CardValue.Jester);
             UpdateTrumpCardClientRpc(trumpCard.color, trumpCard.value);
         }
         else
@@ -200,6 +207,10 @@ public class GameManager : NetworkBehaviour
     {
         ulong senderId = rpcParams.Receive.SenderClientId;
 
+        if (senderId != playerIds[activePlayerIndex.Value]) return; // Nicht dran
+
+        Debug.Log($"Client {senderId} sagt {bid} Stiche an.");
+
         for (int i = 0; i < playerDataList.Count; i++)
         {
             if (playerDataList[i].clientId == senderId)
@@ -211,6 +222,10 @@ public class GameManager : NetworkBehaviour
                 break;
             }
         }
+
+        // Nächster Spieler darf bieten
+        activePlayerIndex.Value = (activePlayerIndex.Value + 1) % playerIds.Count;
+
         CheckAllBidsReceived();
     }
 
@@ -221,15 +236,19 @@ public class GameManager : NetworkBehaviour
             if (!p.hasBidded) return;
         }
 
+        Debug.Log("Alle Gebote da! Phase wechselt zu Playing.");
         currentGameState.Value = GameState.Playing;
 
         if (IsServer)
         {
-            activePlayerIndex.Value = (currentRound - 1) % playerIds.Count;
+            // Starter beginnt auch das Ausspielen (links vom Dealer)
+            int dealerIndex = (currentRound - 1) % playerIds.Count;
+            int starterIndex = (dealerIndex + 1) % playerIds.Count;
+            activePlayerIndex.Value = starterIndex;
         }
     }
 
-    // --- RPCs: Playing ---
+    // --- Playing Logic ---
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
     public void PlayCardServerRpc(int colorInt, int valueInt, RpcParams rpcParams = default)
@@ -243,20 +262,14 @@ public class GameManager : NetworkBehaviour
 
         CardData cardToPlay = new CardData((CardColor)colorInt, (CardValue)valueInt);
 
-        // --- REGEL-CHECK ---
         if (!IsValidMove(senderId, cardToPlay))
         {
-            Debug.LogWarning($"Spieler {senderId} wollte {cardToPlay} legen - REGELVERSTOẞ! (Bedienpflicht)");
-            // Wir brechen einfach ab. Der Client bekommt keine Antwort -> Karte bleibt in der Hand.
+            Debug.LogWarning($"Regelverstoß: {senderId}");
             return;
         }
 
-        // Karte aus Server-Gedächtnis entfernen
         RemoveCardFromServerHand(senderId, cardToPlay);
-
         currentTrickCards.Add(new PlayedCard(senderId, cardToPlay));
-        Debug.Log($"Spieler {senderId} spielt legal: {cardToPlay}");
-
         PlayCardClientRpc(colorInt, valueInt, senderId);
 
         if (currentTrickCards.Count == playerIds.Count)
@@ -269,90 +282,49 @@ public class GameManager : NetworkBehaviour
         }
     }
 
-    // --- NEU: Die Regel-Polizei ---
+    // --- Validierung & Auswertung ---
     private bool IsValidMove(ulong playerId, CardData cardToPlay)
     {
-        // 1. Karten-Besitz prüfen (Sicherheit)
-        // Hat der Spieler diese Karte überhaupt auf der Hand?
-        if (!PlayerHasCard(playerId, cardToPlay))
-        {
-            Debug.LogError($"Cheat-Versuch? Spieler {playerId} hat Karte {cardToPlay} nicht!");
-            return false;
-        }
+        if (!PlayerHasCard(playerId, cardToPlay)) return false;
+        if (cardToPlay.value == CardValue.Wizard || cardToPlay.value == CardValue.Jester) return true;
+        if (currentTrickCards.Count == 0) return true;
 
-        // 2. Zauberer und Narren sind IMMER erlaubt
-        if (cardToPlay.value == CardValue.Wizard || cardToPlay.value == CardValue.Jester)
-        {
-            return true;
-        }
-
-        // 3. Ist es die erste Karte im Stich? -> Alles erlaubt
-        if (currentTrickCards.Count == 0)
-        {
-            return true;
-        }
-
-        // 4. Bedienpflicht prüfen
         CardColor leadColor = GetLeadColor();
+        if (leadColor == CardColor.Red && IsLeadColorUndefined()) return true;
 
-        // Wenn es keine Bedienfarbe gibt (z.B. nur Narren oder erster war Zauberer), ist alles erlaubt
-        if (leadColor == CardColor.Red && IsLeadColorUndefined())
-        {
-            return true;
-        }
-
-        // Hat der Spieler die Bedienfarbe auf der Hand?
         if (PlayerHasColor(playerId, leadColor))
         {
-            // JA: Er muss bedienen! (Außer er spielt Zauberer/Narr, siehe Punkt 2)
-            if (cardToPlay.color == leadColor)
-            {
-                return true; // Er bedient brav
-            }
-            else
-            {
-                return false; // Er hat die Farbe, spielt aber was anderes -> VERBOTEN!
-            }
+            return cardToPlay.color == leadColor;
         }
-        else
-        {
-            // NEIN: Er hat die Farbe nicht -> Er darf alles spielen (abwerfen oder trumpfen)
-            return true;
-        }
+        return true;
     }
 
-    // Hilfsmethode: Bestimmt die angespielte Farbe
     private CardColor GetLeadColor()
     {
         foreach (var played in currentTrickCards)
         {
             if (played.cardData.value != CardValue.Jester && played.cardData.value != CardValue.Wizard)
-            {
                 return played.cardData.color;
-            }
-            if (played.cardData.value == CardValue.Wizard) return CardColor.Red; // Zauberer -> Farbe egal (Dummy Return)
+            if (played.cardData.value == CardValue.Wizard) return CardColor.Red;
         }
-        return CardColor.Red; // Fallback (nur Narren)
+        return CardColor.Red;
     }
 
-    // Hilfsmethode: Prüft ob Farbe "definiert" ist (also ob eine Nicht-Narr/Zauberer Karte liegt)
     private bool IsLeadColorUndefined()
     {
         foreach (var played in currentTrickCards)
         {
-            if (played.cardData.value == CardValue.Wizard) return true; // Zauberer eröffnet -> keine Farbe
-            if (played.cardData.value != CardValue.Jester) return false; // Farbe gefunden!
+            if (played.cardData.value == CardValue.Wizard) return true;
+            if (played.cardData.value != CardValue.Jester) return false;
         }
-        return true; // Nur Narren oder leer
+        return true;
     }
 
     private bool PlayerHasCard(ulong playerId, CardData card)
     {
         if (!serverHandCards.ContainsKey(playerId)) return false;
         foreach (var c in serverHandCards[playerId])
-        {
             if (c.color == card.color && c.value == card.value) return true;
-        }
         return false;
     }
 
@@ -360,29 +332,19 @@ public class GameManager : NetworkBehaviour
     {
         if (!serverHandCards.ContainsKey(playerId)) return false;
         foreach (var c in serverHandCards[playerId])
-        {
-            // Zauberer und Narren zählen NICHT als Farbe
-            if (c.color == color && c.value != CardValue.Wizard && c.value != CardValue.Jester)
-                return true;
-        }
+            if (c.color == color && c.value != CardValue.Wizard && c.value != CardValue.Jester) return true;
         return false;
     }
 
     private void RemoveCardFromServerHand(ulong playerId, CardData card)
     {
         if (!serverHandCards.ContainsKey(playerId)) return;
-
         var hand = serverHandCards[playerId];
         for (int i = 0; i < hand.Count; i++)
         {
-            if (hand[i].color == card.color && hand[i].value == card.value)
-            {
-                hand.RemoveAt(i);
-                break;
-            }
+            if (hand[i].color == card.color && hand[i].value == card.value) { hand.RemoveAt(i); break; }
         }
     }
-    // ----------------------------------------------------
 
     private void EvaluateTrick()
     {
@@ -390,15 +352,7 @@ public class GameManager : NetworkBehaviour
         bool winnerFound = false;
 
         // 1. Zauberer
-        foreach (var entry in currentTrickCards)
-        {
-            if (entry.cardData.value == CardValue.Wizard)
-            {
-                winnerId = entry.playerId;
-                winnerFound = true;
-                break;
-            }
-        }
+        foreach (var entry in currentTrickCards) { if (entry.cardData.value == CardValue.Wizard) { winnerId = entry.playerId; winnerFound = true; break; } }
 
         // 2. Trumpf
         if (!winnerFound && isTrumpActive)
@@ -406,60 +360,34 @@ public class GameManager : NetworkBehaviour
             int highestValue = -1;
             foreach (var entry in currentTrickCards)
             {
-                if (entry.cardData.color == currentTrumpColor &&
-                    entry.cardData.value != CardValue.Jester &&
-                    entry.cardData.value != CardValue.Wizard)
+                if (entry.cardData.color == currentTrumpColor && entry.cardData.value != CardValue.Jester && entry.cardData.value != CardValue.Wizard)
                 {
                     int val = (int)entry.cardData.value;
-                    if (val > highestValue)
-                    {
-                        highestValue = val;
-                        winnerId = entry.playerId;
-                        winnerFound = true;
-                    }
+                    if (val > highestValue) { highestValue = val; winnerId = entry.playerId; winnerFound = true; }
                 }
             }
         }
 
-        // 3. Bedienfarbe
+        // 3. Farbe
         if (!winnerFound)
         {
             CardColor leadColor = currentTrickCards[0].cardData.color;
             bool leadColorFound = false;
-
-            foreach (var entry in currentTrickCards)
-            {
-                if (entry.cardData.value != CardValue.Jester)
-                {
-                    leadColor = entry.cardData.color;
-                    leadColorFound = true;
-                    break;
-                }
-            }
+            foreach (var entry in currentTrickCards) { if (entry.cardData.value != CardValue.Jester) { leadColor = entry.cardData.color; leadColorFound = true; break; } }
 
             if (leadColorFound)
             {
                 int highestValue = -1;
                 foreach (var entry in currentTrickCards)
                 {
-                    if (entry.cardData.color == leadColor &&
-                        entry.cardData.value != CardValue.Jester &&
-                        entry.cardData.value != CardValue.Wizard)
+                    if (entry.cardData.color == leadColor && entry.cardData.value != CardValue.Jester && entry.cardData.value != CardValue.Wizard)
                     {
                         int val = (int)entry.cardData.value;
-                        if (val > highestValue)
-                        {
-                            highestValue = val;
-                            winnerId = entry.playerId;
-                            winnerFound = true;
-                        }
+                        if (val > highestValue) { highestValue = val; winnerId = entry.playerId; winnerFound = true; }
                     }
                 }
             }
-            else
-            {
-                winnerId = currentTrickCards[0].playerId;
-            }
+            else { winnerId = currentTrickCards[0].playerId; }
         }
 
         ProcessTrickResult(winnerId);
@@ -521,7 +449,6 @@ public class GameManager : NetworkBehaviour
 
         ClearTableClientRpc();
 
-        // CHECK: Haben wir das Limit erreicht?
         if (currentRound >= maxRounds)
         {
             EndGame();
@@ -533,63 +460,40 @@ public class GameManager : NetworkBehaviour
         }
     }
 
+    // --- SPIELENDE LOGIK (NEU: Mit PlayerResult) ---
     private void EndGame()
     {
-        Debug.Log("Spiel ist vorbei! Erstelle Rangliste...");
+        Debug.Log("Spiel ist vorbei!");
         currentGameState.Value = GameState.GameOver;
 
-        // 1. Ergebnisse sammeln
+        // Liste erstellen und sortieren für Podium
         List<PlayerResult> results = new List<PlayerResult>();
-
         foreach (var p in playerDataList)
         {
-            PlayerResult res = new PlayerResult
-            {
-                playerName = p.playerName,
-                score = p.score
-            };
+            PlayerResult res = new PlayerResult { playerName = p.playerName, score = p.score };
             results.Add(res);
         }
+        results.Sort((a, b) => b.score.CompareTo(a.score)); // Sortieren nach Score absteigend
 
-        // 2. Sortieren (Höchster Score zuerst)
-        results.Sort((a, b) => b.score.CompareTo(a.score));
-
-        // 3. An alle Clients senden (als Array)
         ShowPodiumClientRpc(results.ToArray());
     }
 
-    
+    // --- CLIENT RPCs ---
+
+    // NEU: Empfängt die Liste statt nur eine ID
     [ClientRpc]
     private void ShowPodiumClientRpc(PlayerResult[] results)
     {
-        Debug.Log("Empfange Endergebnisse...");
         if (GameplayMenu.Instance != null)
         {
+            // WICHTIG: Das Menü muss diese Methode haben!
             GameplayMenu.Instance.ShowPodium(results);
         }
     }
 
-    [ClientRpc]
-    private void EndTrickClientRpc(ulong winnerId)
-    {
-        if (GameplayMenu.Instance != null) GameplayMenu.Instance.ClearTable();
-    }
-
-    [ClientRpc]
-    private void ShowRoundEndButtonClientRpc()
-    {
-        if (IsServer && GameplayMenu.Instance != null) GameplayMenu.Instance.ShowNextStepButton(true);
-    }
-
-    [ClientRpc]
-    private void ClearTableClientRpc()
-    {
-        if (GameplayMenu.Instance != null)
-        {
-            GameplayMenu.Instance.ClearTable();
-            GameplayMenu.Instance.ShowNextStepButton(false);
-        }
-    }
+    [ClientRpc] private void EndTrickClientRpc(ulong winnerId) { if (GameplayMenu.Instance != null) GameplayMenu.Instance.ClearTable(); }
+    [ClientRpc] private void ShowRoundEndButtonClientRpc() { if (IsServer && GameplayMenu.Instance != null) GameplayMenu.Instance.ShowNextStepButton(true); }
+    [ClientRpc] private void ClearTableClientRpc() { if (GameplayMenu.Instance != null) { GameplayMenu.Instance.ClearTable(); GameplayMenu.Instance.ShowNextStepButton(false); } }
 
     [ClientRpc]
     private void ReceiveHandCardsClientRpc(int[] colors, int[] values, ClientRpcParams clientRpcParams = default)
@@ -621,11 +525,7 @@ public class GameManager : NetworkBehaviour
                 foreach (Transform child in GameplayMenu.Instance.handContainer)
                 {
                     CardController cc = child.GetComponent<CardController>();
-                    if (cc != null && cc.CardDataEquals(data))
-                    {
-                        Destroy(child.gameObject);
-                        break;
-                    }
+                    if (cc != null && cc.CardDataEquals(data)) { Destroy(child.gameObject); break; }
                 }
             }
         }
