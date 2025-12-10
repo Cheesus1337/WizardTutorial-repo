@@ -1007,12 +1007,11 @@ MonoBehaviour:
   nextStepButtonLabel: {fileID: 1446919140}
   nextStepButton: {fileID: 211851799}
   lobbyInfoText: {fileID: 610542454}
+  podiumPanel: {fileID: 2085444386}
+  podiumSlots: []
   handContainer: {fileID: 1423139968}
   tableContainer: {fileID: 1711783024}
   trumpContainer: {fileID: 84937861}
-  podiumPanel: {fileID: 2085444386}
-  podiumContainer: {fileID: 2085444387}
-  podiumRowPrefab: {fileID: 224950540}
 --- !u!4 &595958096
 Transform:
   m_ObjectHideFlags: 0
@@ -1720,12 +1719,14 @@ MonoBehaviour:
   nextStepButtonLabel: {fileID: 1446919140}
   nextStepButton: {fileID: 211851799}
   lobbyInfoText: {fileID: 610542454}
+  podiumPanel: {fileID: 2085444386}
+  podiumSlots:
+  - {fileID: 242269077}
+  - {fileID: 725861013}
+  - {fileID: 1301080149}
   handContainer: {fileID: 1423139968}
   tableContainer: {fileID: 1711783024}
   trumpContainer: {fileID: 84937861}
-  podiumPanel: {fileID: 2085444386}
-  podiumContainer: {fileID: 2085444387}
-  podiumRowPrefab: {fileID: 6573443542426219916, guid: b42765a6f5cb90947a8e5cb84ed94d10, type: 3}
 --- !u!114 &825041500
 MonoBehaviour:
   m_ObjectHideFlags: 0

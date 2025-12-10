@@ -57,10 +57,17 @@ public class ScoreboardUI : MonoBehaviour
 
     private void OnGameStateChanged(GameState prev, GameState current)
     {
+        // Anzeigen nur beim Bieten
         if (current == GameState.Bidding)
         {
             if (scoreboardPanel) scoreboardPanel.SetActive(true);
         }
+        // WICHTIG: Sobald das Spiel vorbei ist (Podium), blenden wir das Scoreboard hart aus
+        else if (current == GameState.GameOver)
+        {
+            if (scoreboardPanel) scoreboardPanel.SetActive(false);
+        }
+
         RefreshBoard();
     }
 
