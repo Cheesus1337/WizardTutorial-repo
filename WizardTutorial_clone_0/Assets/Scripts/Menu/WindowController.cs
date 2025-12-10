@@ -58,12 +58,12 @@ public class WindowController : MonoBehaviour, IPointerDownHandler
         PointerEventData eventData = (PointerEventData)data;
         isResizing = true;
 
-        // WICHTIG: Wir merken uns die Mausposition im PARENT-System, nicht im Fenster selbst!
+        // WICHTIG: Wir merken uns die Mausposition im PARENT-System
         RectTransform parentRect = windowRectTransform.parent as RectTransform;
         RectTransformUtility.ScreenPointToLocalPointInRectangle(parentRect, eventData.position, eventData.pressEventCamera, out originalLocalMousePos);
 
         originalSizeDelta = windowRectTransform.sizeDelta;
-        originalPanelPos = windowRectTransform.localPosition; // Position auch merken, falls Pivot nicht passt
+        originalPanelPos = windowRectTransform.localPosition;
     }
 
     public void OnResizeHandleDrag(BaseEventData data)
@@ -76,11 +76,11 @@ public class WindowController : MonoBehaviour, IPointerDownHandler
 
         if (RectTransformUtility.ScreenPointToLocalPointInRectangle(parentRect, eventData.position, eventData.pressEventCamera, out currentMousePos))
         {
-            // Differenz berechnen
+            // 1. Maus-Differenz berechnen
             Vector2 dragDelta = currentMousePos - originalLocalMousePos;
 
-            // Neue Größe berechnen
-            // X wächst nach rechts (+), Y wächst nach unten (in Unity UI ist unten oft minus, also -deltaY)
+            // 2. Neue Größe berechnen
+            // (Y ist in Unity UI oft negativ nach unten, daher -dragDelta.y beim Ziehen nach unten)
             float newWidth = originalSizeDelta.x + dragDelta.x;
             float newHeight = originalSizeDelta.y - dragDelta.y;
 
@@ -88,7 +88,25 @@ public class WindowController : MonoBehaviour, IPointerDownHandler
             newWidth = Mathf.Clamp(newWidth, minSize.x, maxSize.x);
             newHeight = Mathf.Clamp(newHeight, minSize.y, maxSize.y);
 
+            // 3. Tatsächliche Änderung berechnen (nachdem Limits angewendet wurden)
+            float widthChange = newWidth - originalSizeDelta.x;
+            float heightChange = newHeight - originalSizeDelta.y;
+
+            // 4. Größe anwenden
             windowRectTransform.sizeDelta = new Vector2(newWidth, newHeight);
+
+            // 5. POSITION KORRIGIEREN (Der entscheidende Fix!)
+            // Damit das Fenster beim Wachsen nicht in beide Richtungen explodiert (bei Pivot Center),
+            // müssen wir den Mittelpunkt verschieben.
+            // - Wenn es breiter wird (+X), muss die Mitte nach rechts (+X/2).
+            // - Wenn es höher wird (+Y nach unten), muss die Mitte nach unten (-Y/2).
+
+            float xPosOffset = widthChange * 0.5f;
+            float yPosOffset = heightChange * -0.5f;
+
+            // Aber: Prüfen wir den Pivot! Wenn der User den Pivot nicht auf 0.5/0.5 hat, brauchen wir andere Logik.
+            // Diese Formel geht davon aus, dass dein Pivot auf (0.5, 0.5) steht.
+            windowRectTransform.localPosition = originalPanelPos + new Vector3(xPosOffset, yPosOffset, 0);
         }
     }
 
