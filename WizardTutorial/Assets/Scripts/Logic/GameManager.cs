@@ -45,6 +45,8 @@ public class GameManager : NetworkBehaviour
 
     [Header("References")]
     [SerializeField] private GameObject cardPrefab;
+    [Header("UI References")]
+    [SerializeField] private TrumpSelectionUI trumpSelectionUI; // Hier das Panel reinziehen!
 
     public NetworkVariable<GameState> currentGameState = new NetworkVariable<GameState>(GameState.Setup);
     public NetworkList<WizardPlayerData> playerDataList;
@@ -232,19 +234,66 @@ public class GameManager : NetworkBehaviour
         }
 
         // Trumpf
+        // Trumpf Ermittlung
         if (deck.Count > 0)
         {
             CardData trumpCard = deck[0];
-            currentTrumpColor = trumpCard.color;
-            isTrumpActive = (trumpCard.value != CardValue.Jester);
+
+            // Zeige allen Spielern die aufgedeckte Karte (visuell)
             UpdateTrumpCardClientRpc(trumpCard.color, trumpCard.value);
+
+            if (trumpCard.value == CardValue.Wizard)
+            {
+                // ZAUBERER: Spiel pausiert, Dealer muss wählen
+                isTrumpActive = true; // Wird aktiv sein, sobald Farbe gewählt ist
+
+                Debug.Log("Zauberer als Trumpf! Dealer darf wählen.");
+
+                // Dealer ermitteln (der Spieler VOR dem Starter, der ausgeteilt hat)
+                // In deinem Code war dealerIndex schon berechnet:
+                int dealerIndex = (currentRound.Value - 1) % playerDataList.Count;
+                ulong dealerClientId = playerDataList[dealerIndex].clientId;
+
+                // Nur dem Dealer das Fenster öffnen
+                ClientRpcParams clientRpcParams = new ClientRpcParams
+                {
+                    Send = new ClientRpcSendParams { TargetClientIds = new ulong[] { dealerClientId } }
+                };
+
+                PromptTrumpSelectionClientRpc(clientRpcParams);
+
+                // WICHTIG: Wir verlassen hier die Funktion! 
+                // Das Spiel geht erst weiter, wenn der Dealer geantwortet hat via RPC.
+                return;
+            }
+            else if (trumpCard.value == CardValue.Jester)
+            {
+                // NARR: Kein Trumpf
+                currentTrumpColor = CardColor.Red; // Farbe egal
+                isTrumpActive = false;
+                syncedTrumpColor.Value = CardColor.Red; // Dummy
+            }
+            else
+            {
+                // NORMALE KARTE: Farbe der Karte ist Trumpf
+                currentTrumpColor = trumpCard.color;
+                isTrumpActive = true;
+                syncedTrumpColor.Value = trumpCard.color;
+            }
         }
         else
         {
+            // Keine Karten mehr übrig (letzte Runde) -> Kein Trumpf
             isTrumpActive = false;
-            UpdateTrumpCardClientRpc(CardColor.Red, (CardValue)99);
+            UpdateTrumpCardClientRpc(CardColor.Red, (CardValue)99); // 99 als Code für "Keine Karte"
         }
+
+        // Wenn kein Zauberer lag, geht es hier direkt weiter:
+        StartBiddingPhase();
     }
+
+    // Synchronisierte Trumpffarbe für alle Clients
+    public NetworkVariable<CardColor> syncedTrumpColor = new NetworkVariable<CardColor>();
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
     public void SubmitBidServerRpc(int bid, RpcParams rpcParams = default)
@@ -328,6 +377,53 @@ public class GameManager : NetworkBehaviour
             // Optional: Hier könnte man einen Retry machen, wenn es immer noch nicht klappt
         }
     }
+
+    [ClientRpc]
+    private void PromptTrumpSelectionClientRpc(ClientRpcParams clientRpcParams = default)
+    {
+        // Dieses Popup öffnet sich NUR beim Dealer
+        if (trumpSelectionUI != null)
+        {
+            trumpSelectionUI.gameObject.SetActive(true);
+            Debug.Log("Du bist der Dealer! Wähle eine Trumpffarbe.");
+        }
+    }
+
+    [Rpc(SendTo.Server)]
+    public void SubmitTrumpSelectionServerRpc(CardColor chosenColor)
+    {
+        Debug.Log($"Server hat Trumpfwahl empfangen: {chosenColor}");
+
+        // Logik setzen
+        currentTrumpColor = chosenColor;
+        syncedTrumpColor.Value = chosenColor; // Sync für alle Clients
+        isTrumpActive = true;
+
+        // Allen Bescheid geben (optional: Nachricht im Chat oder visuelles Feedback)
+        AnnounceTrumpColorClientRpc(chosenColor);
+
+        // JETZT geht das Spiel weiter
+        StartBiddingPhase();
+    }
+
+    [ClientRpc]
+    private void AnnounceTrumpColorClientRpc(CardColor color)
+    {
+        // Hier könnte man z.B. einen Text anzeigen: "Dealer wählt Herz als Trumpf"
+        Debug.Log($"Der Dealer hat {color} als Trumpf bestimmt!");
+
+        // Optional: Das Trumpf-Icon im UI aktualisieren, falls man das möchte
+        // GameplayMenu.Instance.UpdateTrumpDisplay(color); 
+    }
+
+    private void StartBiddingPhase()
+    {
+        // Die Logik, die vorher am Ende von StartRound stand
+        Debug.Log("Trumpf festgelegt. Bietphase beginnt.");
+        currentGameState.Value = GameState.Bidding;
+        HideStartButtonClientRpc();
+    }
+
 
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
