@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
@@ -18,12 +19,7 @@ public struct PlayedCard
 {
     public ulong playerId;
     public CardData cardData;
-
-    public PlayedCard(ulong player, CardData card)
-    {
-        playerId = player;
-        cardData = card;
-    }
+    public PlayedCard(ulong player, CardData card) { playerId = player; cardData = card; }
 }
 
 public struct PlayerResult : INetworkSerializable
@@ -43,7 +39,7 @@ public class GameManager : NetworkBehaviour
     public static GameManager Instance { get; private set; }
 
     [Header("Game Settings")]
-    [SerializeField] private int currentRound = 1;
+    [SerializeField] public int currentRound = 1;
     [SerializeField] private int maxRounds = 3;
 
     [Header("References")]
@@ -84,7 +80,24 @@ public class GameManager : NetworkBehaviour
                     OnClientConnected(uid);
             }
             Debug.Log("GameManager gestartet (Server Mode)");
+            // Namen senden sobald wir verbunden sind ---
+            if (IsClient)
+            {
+                // Wir schicken unseren Namen, den wir im Menü eingegeben haben
+                StartCoroutine(SendNameWithDelay());
+            }
         }
+    }
+
+    private IEnumerator SendNameWithDelay()
+    {
+        // Wir warten kurz (0.2 Sekunden), um sicherzugehen, dass der Server 
+        // unseren Join (OnClientConnected) verarbeitet hat.
+        yield return new WaitForSeconds(0.2f);
+
+        string myName = MainMenu.LocalPlayerName;
+        Debug.Log($"[Client] Sende meinen Namen an Server: {myName}");
+        SubmitNameServerRpc(myName);
     }
 
     private void OnClientConnected(ulong clientId)
@@ -97,21 +110,21 @@ public class GameManager : NetworkBehaviour
                 WizardPlayerData newPlayer = new WizardPlayerData
                 {
                     clientId = clientId,
-                    playerName = $"Spieler {clientId}",
+                    playerName = $"Spieler {clientId}", // Platzhalter
                     score = 0,
                     currentBid = 0,
                     tricksTaken = 0,
                     hasBidded = false
                 };
                 playerDataList.Add(newPlayer);
+                if (!serverHandCards.ContainsKey(clientId)) serverHandCards.Add(clientId, new List<CardData>());
 
-                if (!serverHandCards.ContainsKey(clientId))
-                    serverHandCards.Add(clientId, new List<CardData>());
+                Debug.Log($"[Server] Neuer Spieler {clientId} zur Liste hinzugefügt.");
             }
         }
     }
 
-    // --- WICHTIG: DER FIX FÜR DEN CLIENT ---
+
     public bool IsPlayerTurn(ulong clientId)
     {
         // Auf dem Client ist playerIds leer, deshalb nutzen wir playerDataList!
@@ -126,6 +139,39 @@ public class GameManager : NetworkBehaviour
     }
     // ---------------------------------------
 
+    //  Die "Verbotene Zahl" berechnen ---
+    public int GetForbiddenBid()
+    {
+        // 1. Zählen wie viele Spieler schon geboten haben
+        int biddedCount = 0;
+        int currentSum = 0;
+
+        foreach (var p in playerDataList)
+        {
+            if (p.hasBidded)
+            {
+                biddedCount++;
+                currentSum += p.currentBid;
+            }
+        }
+
+        // 2. Sind wir der LETZTE Spieler?
+        // (Anzahl Spieler - 1) haben schon geboten.
+        if (biddedCount == playerDataList.Count - 1)
+        {
+            // Regel: Summe darf nicht gleich Rundenanzahl sein
+            // currentSum + forbidden = currentRound
+            // forbidden = currentRound - currentSum
+            int forbidden = currentRound - currentSum;
+
+            // Verboten ist nur möglich, wenn die Zahl überhaupt wählbar wäre (>= 0)
+            if (forbidden >= 0) return forbidden;
+        }
+
+        return -1; // -1 bedeutet: Keine Einschränkung
+    }
+
+
     public void StartGame()
     {
         if (!IsServer) return;
@@ -139,6 +185,8 @@ public class GameManager : NetworkBehaviour
         Debug.Log($"Starte Runde {currentRound}.");
 
         currentGameState.Value = GameState.Bidding;
+        // Button ausblenden auf Clients (via Statuswechsel oder explizit)
+        HideStartButtonClientRpc();
 
         for (int i = 0; i < playerDataList.Count; i++)
         {
@@ -153,15 +201,9 @@ public class GameManager : NetworkBehaviour
         if (IsServer)
         {
             // Wir nutzen playerDataList.Count für Konsistenz
-            int playerCount = playerDataList.Count;
-            if (playerCount > 0)
-            {
-                int dealerIndex = (currentRound - 1) % playerCount;
-                int starterIndex = (dealerIndex + 1) % playerCount;
-
-                activePlayerIndex.Value = starterIndex;
-                Debug.Log($"Runde {currentRound}: Starter Index ist {starterIndex}");
-            }
+            int dealerIndex = (currentRound - 1) % playerDataList.Count;
+            int starterIndex = (dealerIndex + 1) % playerDataList.Count;
+            activePlayerIndex.Value = starterIndex;
         }
 
         // Karten verteilen
@@ -211,6 +253,14 @@ public class GameManager : NetworkBehaviour
 
         Debug.Log($"Client {senderId} sagt {bid} Stiche an.");
 
+        // Server-Side Check (Sicherheit) ---
+        int forbidden = GetForbiddenBid();
+        if (forbidden != -1 && bid == forbidden)
+        {
+            Debug.LogWarning($"Spieler {senderId} versucht verbotene Zahl {bid} zu bieten!");
+            return; // Abweisen
+        }
+
         for (int i = 0; i < playerDataList.Count; i++)
         {
             if (playerDataList[i].clientId == senderId)
@@ -239,14 +289,43 @@ public class GameManager : NetworkBehaviour
         Debug.Log("Alle Gebote da! Phase wechselt zu Playing.");
         currentGameState.Value = GameState.Playing;
 
-        if (IsServer)
+        /*if (IsServer)
         {
             // Der Startspieler der Biet-Runde fängt auch an zu spielen
             int dealerIndex = (currentRound - 1) % playerDataList.Count;
             int starterIndex = (dealerIndex + 1) % playerDataList.Count;
             activePlayerIndex.Value = starterIndex;
+        }*/
+    }
+    //  Namen verarbeiten ---
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+    private void SubmitNameServerRpc(string name, RpcParams rpcParams = default)
+    {
+        ulong senderId = rpcParams.Receive.SenderClientId;
+        bool found = false;
+
+        Debug.Log($"[Server] RPC empfangen: Spieler {senderId} möchte '{name}' heißen.");
+
+        for (int i = 0; i < playerDataList.Count; i++)
+        {
+            if (playerDataList[i].clientId == senderId)
+            {
+                var data = playerDataList[i];
+                data.playerName = name;
+                playerDataList[i] = data; // Sync triggern
+                Debug.Log($"[Server] Name für Spieler {senderId} erfolgreich auf '{name}' geändert.");
+                found = true;
+                break;
+            }
+        }
+
+        if (!found)
+        {
+            Debug.LogWarning($"[Server] Konnte Spieler {senderId} in der Liste nicht finden! Name '{name}' nicht gesetzt.");
+            // Optional: Hier könnte man einen Retry machen, wenn es immer noch nicht klappt
         }
     }
+
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
     public void PlayCardServerRpc(int colorInt, int valueInt, RpcParams rpcParams = default)
@@ -283,7 +362,7 @@ public class GameManager : NetworkBehaviour
         }
     }
 
-    // --- Helper & Logic ---
+    // --- Helper Validierung & Logic ---
     private bool IsValidMove(ulong playerId, CardData cardToPlay)
     {
         if (!PlayerHasCard(playerId, cardToPlay)) return false;
@@ -445,6 +524,8 @@ public class GameManager : NetworkBehaviour
         ShowRoundEndButtonClientRpc();
     }
 
+    
+
     [Rpc(SendTo.Server)]
     public void StartNextRoundServerRpc()
     {
@@ -481,18 +562,29 @@ public class GameManager : NetworkBehaviour
 
     // --- CLIENT RPCs ---
 
-    [ClientRpc]
-    private void ShowPodiumClientRpc(PlayerResult[] results)
+    [ClientRpc] private void HideStartButtonClientRpc()
+    {
+        if (GameplayMenu.Instance != null)
+            GameplayMenu.Instance.HideStartButton();
+    }
+    [ClientRpc] private void ShowPodiumClientRpc(PlayerResult[] results)
     {
         if (GameplayMenu.Instance != null) GameplayMenu.Instance.ShowPodium(results);
     }
-
-    [ClientRpc] private void EndTrickClientRpc(ulong winnerId) { if (GameplayMenu.Instance != null) GameplayMenu.Instance.ClearTable(); }
-    [ClientRpc] private void ShowRoundEndButtonClientRpc() { if (IsServer && GameplayMenu.Instance != null) GameplayMenu.Instance.ShowNextStepButton(true); }
-    [ClientRpc] private void ClearTableClientRpc() { if (GameplayMenu.Instance != null) { GameplayMenu.Instance.ClearTable(); GameplayMenu.Instance.ShowNextStepButton(false); } }
-
-    [ClientRpc]
-    private void ReceiveHandCardsClientRpc(int[] colors, int[] values, ClientRpcParams clientRpcParams = default)
+    [ClientRpc] private void EndTrickClientRpc(ulong winnerId) 
+    { if (GameplayMenu.Instance != null)
+      GameplayMenu.Instance.ClearTable(); }
+    [ClientRpc] private void ShowRoundEndButtonClientRpc()
+    { if (IsServer && GameplayMenu.Instance != null)
+      GameplayMenu.Instance.ShowNextStepButton(true); }
+    [ClientRpc] private void ClearTableClientRpc()
+    { if (GameplayMenu.Instance != null)
+        { 
+        GameplayMenu.Instance.ClearTable();
+        GameplayMenu.Instance.ShowNextStepButton(false);
+        } 
+    }
+    [ClientRpc] private void ReceiveHandCardsClientRpc(int[] colors, int[] values, ClientRpcParams clientRpcParams = default)
     {
         if (GameplayMenu.Instance == null) return;
         GameplayMenu.Instance.ClearHand();
@@ -507,9 +599,7 @@ public class GameManager : NetworkBehaviour
             }
         }
     }
-
-    [ClientRpc]
-    private void PlayCardClientRpc(int color, int value, ulong playerId)
+    [ClientRpc] private void PlayCardClientRpc(int color, int value, ulong playerId)
     {
         CardData data = new CardData((CardEnums.CardColor)color, (CardEnums.CardValue)value);
         if (GameplayMenu.Instance != null) GameplayMenu.Instance.PlaceCardOnTable(data, cardPrefab, playerId);
@@ -526,9 +616,7 @@ public class GameManager : NetworkBehaviour
             }
         }
     }
-
-    [ClientRpc]
-    private void UpdateTrumpCardClientRpc(CardEnums.CardColor color, CardEnums.CardValue value)
+    [ClientRpc] private void UpdateTrumpCardClientRpc(CardEnums.CardColor color, CardEnums.CardValue value)
     {
         if ((int)value == 99) return;
         CardData trumpData = new CardData(color, value);

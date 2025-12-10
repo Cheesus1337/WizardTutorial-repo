@@ -81,6 +81,19 @@ public class PlayerRowUI : MonoBehaviour
         if (isMyRow && isBiddingPhase && !data.hasBidded && isMyTurn)
         {
             if (inputContainer) inputContainer.SetActive(true);
+
+            // Automatische Korrektur beim Start ---
+            // Wenn 0 verboten ist, müssen wir sofort auf 1 springen
+            if (GameManager.Instance != null)
+            {
+                int forbidden = GameManager.Instance.GetForbiddenBid();
+                // Wenn wir bei 0 starten und 0 verboten ist -> auf 1 ändern
+                if (_tempBid == forbidden)
+                {
+                    _tempBid = 1;
+                }
+            }
+
             if (bidText) bidText.text = _tempBid.ToString();
         }
         else
@@ -91,9 +104,34 @@ public class PlayerRowUI : MonoBehaviour
 
     private void ChangeBid(int change)
     {
-        _tempBid += change;
-        if (_tempBid < 0) _tempBid = 0;
+        int newBid = _tempBid + change;
+
+        // Basis-Grenzen prüfen
+        if (newBid < 0) return;
+
+        
+        // Ist diese Zahl verboten?
+        if (GameManager.Instance != null)
+        {
+            int forbidden = GameManager.Instance.GetForbiddenBid();
+
+            // Wenn wir auf der verbotenen Zahl landen würden -> Überspringen!
+            if (newBid == forbidden)
+            {
+                // Wenn wir +1 gedrückt haben, springen wir noch eins weiter
+                // Wenn wir -1 gedrückt haben, springen wir noch eins tiefer
+                newBid += change;
+            }
+        }
+
+        // Nochmal Check (falls wir durch Überspringen unter 0 fallen)
+        if (newBid < 0) return;
+
+        _tempBid = newBid;
         if (bidText) bidText.text = _tempBid.ToString();
+
+        // Optional: Visuelles Feedback, falls wir auf der verbotenen Zahl stehen würden?
+        // Das Überspringen ist meistens am intuitivsten.
     }
 
     private void ConfirmBid()

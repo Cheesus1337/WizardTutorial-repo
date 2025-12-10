@@ -22,6 +22,9 @@ public class GameplayMenu : MonoBehaviour
     public TextMeshProUGUI secondPlaceText;
     public TextMeshProUGUI thirdPlaceText;
 
+    [Header("Main UI")]
+    public GameObject startGameButton;
+
     private void Awake()
     {
         Instance = this;
@@ -64,6 +67,11 @@ public class GameplayMenu : MonoBehaviour
     {
         NetworkManager.Singleton.Shutdown();
         SceneManager.LoadScene("MainMenu");
+    }
+
+    public void HideStartButton()
+    {
+        if (startGameButton != null) startGameButton.SetActive(false);
     }
 
     // --- Methoden für RPCs ---

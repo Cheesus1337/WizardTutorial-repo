@@ -1025,6 +1025,7 @@ MonoBehaviour:
   firstPlaceText: {fileID: 242269077}
   secondPlaceText: {fileID: 725861013}
   thirdPlaceText: {fileID: 1301080149}
+  startGameButton: {fileID: 0}
 --- !u!4 &595958096
 Transform:
   m_ObjectHideFlags: 0
@@ -1546,6 +1547,7 @@ MonoBehaviour:
   firstPlaceText: {fileID: 242269077}
   secondPlaceText: {fileID: 725861013}
   thirdPlaceText: {fileID: 1301080149}
+  startGameButton: {fileID: 215610666}
 --- !u!114 &825041500
 MonoBehaviour:
   m_ObjectHideFlags: 0
