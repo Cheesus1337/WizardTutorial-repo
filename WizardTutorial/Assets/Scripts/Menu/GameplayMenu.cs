@@ -21,6 +21,14 @@ public class GameplayMenu : MonoBehaviour
     public GameObject gameOverPanel;
     public TextMeshProUGUI winnerText;
 
+    [Header("Podium UI")]
+    public GameObject podiumPanel; // Das neue Panel
+                                   // Wir machen es einfach: 3 Textfelder für die Top 3
+    public TextMeshProUGUI firstPlaceText;
+    public TextMeshProUGUI secondPlaceText;
+    public TextMeshProUGUI thirdPlaceText;
+
+
     private void Awake()
     {
         Instance = this;
@@ -31,32 +39,38 @@ public class GameplayMenu : MonoBehaviour
     // In Awake/Start: Panel verstecken!
     // if (gameOverPanel != null) gameOverPanel.SetActive(false);
 
-    public void ShowGameOverScreen(ulong winnerId, int score)
+    public void ShowPodium(PlayerResult[] results)
     {
-        // DEBUG: Prüfen ob der Befehl ankommt
-        Debug.Log("GameplayMenu: ShowGameOverScreen wurde aufgerufen!");
+        if (podiumPanel == null) return;
 
-        if (gameOverPanel != null)
+        podiumPanel.SetActive(true);
+        podiumPanel.transform.SetAsLastSibling(); // Nach vorne holen
+
+        // Textfelder leeren (falls weniger als 3 Spieler)
+        if (firstPlaceText) firstPlaceText.text = "";
+        if (secondPlaceText) secondPlaceText.text = "";
+        if (thirdPlaceText) thirdPlaceText.text = "";
+
+        // 1. Platz
+        if (results.Length > 0 && firstPlaceText != null)
         {
-            Debug.Log("GameplayMenu: Aktiviere Panel..."); // DEBUG
-            gameOverPanel.SetActive(true);
-
-            // Um ganz sicher zu gehen: In den Vordergrund holen
-            gameOverPanel.transform.SetAsLastSibling();
-
-            if (winnerText != null)
-            {
-                if (winnerId == NetworkManager.Singleton.LocalClientId)
-                    winnerText.text = $"GEWONNEN!\nDu hast {score} Punkte!";
-                else
-                    winnerText.text = $"SPIEL VORBEI\nSpieler {winnerId} gewinnt mit {score} Punkten.";
-            }
+            firstPlaceText.text = $"1. {results[0].playerName} ({results[0].score} Pkt)";
         }
-        else
+
+        // 2. Platz
+        if (results.Length > 1 && secondPlaceText != null)
         {
-            Debug.LogError("FEHLER: Game Over Panel ist im Inspector nicht verknüpft!");
+            secondPlaceText.text = $"2. {results[1].playerName} ({results[1].score} Pkt)";
+        }
+
+        // 3. Platz
+        if (results.Length > 2 && thirdPlaceText != null)
+        {
+            thirdPlaceText.text = $"3. {results[2].playerName} ({results[2].score} Pkt)";
         }
     }
+
+    // Die alte ShowGameOverScreen Methode kannst du löschen oder ignorieren.
 
     // Für den Button "Zurück zum Menü"
     public void OnMainMenuClicked()

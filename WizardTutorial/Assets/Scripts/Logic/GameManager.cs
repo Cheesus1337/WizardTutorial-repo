@@ -26,6 +26,19 @@ public struct PlayedCard
     }
 }
 
+// Damit wir Listen über das Netzwerk schicken können
+public struct PlayerResult : INetworkSerializable
+{
+    public FixedString64Bytes playerName; // Netzwerk-sicherer String
+    public int score;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref playerName);
+        serializer.SerializeValue(ref score);
+    }
+}
+
 public class GameManager : NetworkBehaviour
 {
     public static GameManager Instance { get; private set; }
@@ -522,33 +535,37 @@ public class GameManager : NetworkBehaviour
 
     private void EndGame()
     {
-        Debug.Log("Spiel ist vorbei!");
+        Debug.Log("Spiel ist vorbei! Erstelle Rangliste...");
         currentGameState.Value = GameState.GameOver;
 
-        // Gewinner ermitteln
-        int highestScore = int.MinValue;
-        ulong winnerId = 0;
+        // 1. Ergebnisse sammeln
+        List<PlayerResult> results = new List<PlayerResult>();
 
-        foreach (var player in playerDataList)
+        foreach (var p in playerDataList)
         {
-            if (player.score > highestScore)
+            PlayerResult res = new PlayerResult
             {
-                highestScore = player.score;
-                winnerId = player.clientId;
-            }
+                playerName = p.playerName,
+                score = p.score
+            };
+            results.Add(res);
         }
 
-        Debug.Log($"Gewinner ist Spieler {winnerId} mit {highestScore} Punkten!");
+        // 2. Sortieren (Höchster Score zuerst)
+        results.Sort((a, b) => b.score.CompareTo(a.score));
 
-        ShowGameOverClientRpc(winnerId, highestScore);
+        // 3. An alle Clients senden (als Array)
+        ShowPodiumClientRpc(results.ToArray());
     }
 
+    
     [ClientRpc]
-    private void ShowGameOverClientRpc(ulong winnerId, int score)
+    private void ShowPodiumClientRpc(PlayerResult[] results)
     {
+        Debug.Log("Empfange Endergebnisse...");
         if (GameplayMenu.Instance != null)
         {
-            GameplayMenu.Instance.ShowGameOverScreen(winnerId, score);
+            GameplayMenu.Instance.ShowPodium(results);
         }
     }
 
