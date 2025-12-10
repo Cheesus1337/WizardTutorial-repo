@@ -77,7 +77,10 @@ public class GameManager : NetworkBehaviour
         // 1. Server Setup
         if (IsServer)
         {
+            // Sicherheitshalber erst abmelden, um Doppel-Abos zu vermeiden
+            NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
             NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
+
             if (NetworkManager.Singleton.ConnectedClientsIds.Count > 0)
             {
                 foreach (ulong uid in NetworkManager.Singleton.ConnectedClientsIds)
@@ -86,12 +89,23 @@ public class GameManager : NetworkBehaviour
             Debug.Log("GameManager gestartet (Server Mode)");
         }
 
-        // 2. Client Setup (ÄNDERUNG: Dies muss AUßERHALB von IsServer stehen!)
+        // 2. Client Setup
         if (IsClient)
         {
-            // Wir schicken unseren Namen, den wir im Menü eingegeben haben
             StartCoroutine(SendNameWithDelay());
         }
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        // WICHTIG: Abmelden, sonst ruft der NetworkManager beim nächsten Spiel 
+        // die Methode dieses zerstörten Objekts auf -> Crash!
+        if (IsServer && NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
+        }
+
+        base.OnNetworkDespawn();
     }
 
     private IEnumerator SendNameWithDelay()
