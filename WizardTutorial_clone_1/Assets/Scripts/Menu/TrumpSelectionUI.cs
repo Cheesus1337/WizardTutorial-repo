@@ -18,8 +18,7 @@ public class TrumpSelectionUI : MonoBehaviour
         btnGreen.onClick.AddListener(() => OnColorSelected(CardColor.Green));
         btnYellow.onClick.AddListener(() => OnColorSelected(CardColor.Yellow));
 
-        // Sicherheitshalber am Anfang ausblenden
-        gameObject.SetActive(false);
+        
     }
 
     private void OnColorSelected(CardColor selectedColor)

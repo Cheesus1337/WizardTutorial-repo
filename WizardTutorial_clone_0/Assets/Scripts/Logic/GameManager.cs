@@ -253,6 +253,11 @@ public class GameManager : NetworkBehaviour
         {
             CardData trumpCard = deck[0];
 
+            // --- TESTING CHEAT: Erzwinge IMMER einen Zauberer als Trumpf ---
+            Debug.LogWarning("ACHTUNG: Testing-Modus aktiv! Trumpf wird zu Zauberer geändert.");
+            trumpCard = new CardData(CardColor.Blue, CardValue.Wizard);
+            // ----------------------------------------------------------------
+
             // Zeige allen Spielern die aufgedeckte Karte (visuell)
             UpdateTrumpCardClientRpc(trumpCard.color, trumpCard.value);
 
@@ -395,11 +400,15 @@ public class GameManager : NetworkBehaviour
     [ClientRpc]
     private void PromptTrumpSelectionClientRpc(ClientRpcParams clientRpcParams = default)
     {
-        // Dieses Popup öffnet sich NUR beim Dealer
+        Debug.Log($"[Client] RPC empfangen! Ich soll wählen. Mein UI ist: {trumpSelectionUI}");
+
         if (trumpSelectionUI != null)
         {
             trumpSelectionUI.gameObject.SetActive(true);
-            Debug.Log("Du bist der Dealer! Wähle eine Trumpffarbe.");
+        }
+        else
+        {
+            Debug.LogError("[Client] FEHLER: trumpSelectionUI ist im GameManager nicht verlinkt!");
         }
     }
 

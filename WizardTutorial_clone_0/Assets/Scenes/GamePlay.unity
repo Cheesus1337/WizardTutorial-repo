@@ -3367,7 +3367,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0.00012207031, y: 0}
+  m_AnchoredPosition: {x: 0.00024414062, y: 0}
   m_SizeDelta: {x: -1593.8, y: -746.0209}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1373538319
@@ -5825,6 +5825,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 6860020088542425875, guid: 28164950ef0b6e348a543e5a0a061b9a, type: 3}
+      propertyPath: trumpSelectionUI
+      value: 
+      objectReference: {fileID: 1373538319}
     - target: {fileID: 9181101220286266801, guid: 28164950ef0b6e348a543e5a0a061b9a, type: 3}
       propertyPath: GlobalObjectIdHash
       value: 1411670872
