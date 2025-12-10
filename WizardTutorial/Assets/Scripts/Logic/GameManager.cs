@@ -254,8 +254,8 @@ public class GameManager : NetworkBehaviour
             CardData trumpCard = deck[0];
 
             // --- TESTING CHEAT: Erzwinge IMMER einen Zauberer als Trumpf ---
-            Debug.LogWarning("ACHTUNG: Testing-Modus aktiv! Trumpf wird zu Zauberer geändert.");
-            trumpCard = new CardData(CardColor.Blue, CardValue.Wizard);
+            //Debug.LogWarning("ACHTUNG: Testing-Modus aktiv! Trumpf wird zu Zauberer geändert.");
+            //trumpCard = new CardData(CardColor.Blue, CardValue.Wizard);
             // ----------------------------------------------------------------
 
             // Zeige allen Spielern die aufgedeckte Karte (visuell)
@@ -430,13 +430,23 @@ public class GameManager : NetworkBehaviour
     }
 
     [ClientRpc]
+    
     private void AnnounceTrumpColorClientRpc(CardColor color)
     {
-        // Hier könnte man z.B. einen Text anzeigen: "Dealer wählt Herz als Trumpf"
         Debug.Log($"Der Dealer hat {color} als Trumpf bestimmt!");
 
-        // Optional: Das Trumpf-Icon im UI aktualisieren, falls man das möchte
-        // GameplayMenu.Instance.UpdateTrumpDisplay(color); 
+        // Wir erstellen eine "Fake"-Karte mit der gewählten Farbe und dem Wert "Zauberer"
+        // Damit wird im Trumpf-Feld nun z.B. ein Roter Zauberer angezeigt.
+        CardData visualTrump = new CardData(color, CardValue.Wizard);
+
+        if (GameplayMenu.Instance != null)
+        {
+            // Wir nutzen deine existierende Funktion, um die Karte im UI auszutauschen
+            GameplayMenu.Instance.ShowTrumpCard(visualTrump, cardPrefab);
+
+            // Optional: Zusätzlich eine Nachricht im Lobby-Text oder einem Info-Text anzeigen?
+            // GameplayMenu.Instance.SetInfoText($"Trumpf ist jetzt: {color}");
+        }
     }
 
     private void StartBiddingPhase()
