@@ -118,6 +118,17 @@ public class GameplayMenu : NetworkBehaviour
     // --- Buttons & Helper ---
     public void OnStartGameClicked() { if (GameManager.Instance != null) GameManager.Instance.StartGame(); }
     public void OnNextStepClicked() { ShowNextStepButton(false); GameManager.Instance.StartNextRoundServerRpc(); }
+    public void OnHomeClicked()
+    {
+        // 1. Netzwerkverbindung sauber trennen
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.Shutdown();
+        }
+
+        // 2. Szene wechseln (zurück zum Start)
+        UnityEngine.SceneManagement.SceneManager.LoadScene("MainMenu");
+    }
     public void HideStartButton() { if (startButton != null) startButton.SetActive(false); }
     public void ShowNextStepButton(bool show) { if (nextStepButton != null) nextStepButton.SetActive(show); }
     public void SetNextStepButtonText(bool isLastRound) { if (nextStepButtonLabel != null) nextStepButtonLabel.text = isLastRound ? "Showdown" : "Nächste Runde"; }
