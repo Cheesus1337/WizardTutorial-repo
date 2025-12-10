@@ -14,20 +14,6 @@ public enum GameState
     GameOver
 }
 
-// --- WICHTIG: Dieses Struct muss hier PUBLIC stehen, damit GameplayMenu es sieht ---
-public struct PlayerResult : INetworkSerializable
-{
-    public FixedString64Bytes playerName;
-    public int score;
-
-    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-    {
-        serializer.SerializeValue(ref playerName);
-        serializer.SerializeValue(ref score);
-    }
-}
-// ----------------------------------------------------------------------------------
-
 public struct PlayedCard
 {
     public ulong playerId;
@@ -37,6 +23,18 @@ public struct PlayedCard
     {
         playerId = player;
         cardData = card;
+    }
+}
+
+public struct PlayerResult : INetworkSerializable
+{
+    public FixedString64Bytes playerName;
+    public int score;
+
+    public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
+    {
+        serializer.SerializeValue(ref playerName);
+        serializer.SerializeValue(ref score);
     }
 }
 
@@ -53,6 +51,8 @@ public class GameManager : NetworkBehaviour
 
     public NetworkVariable<GameState> currentGameState = new NetworkVariable<GameState>(GameState.Setup);
     public NetworkList<WizardPlayerData> playerDataList;
+
+    // Wer ist gerade dran? (Bieten & Spielen)
     public NetworkVariable<int> activePlayerIndex = new NetworkVariable<int>(0);
 
     private List<ulong> playerIds = new List<ulong>();
@@ -111,22 +111,20 @@ public class GameManager : NetworkBehaviour
         }
     }
 
-    // Helper für UI
+    // --- WICHTIG: DER FIX FÜR DEN CLIENT ---
     public bool IsPlayerTurn(ulong clientId)
     {
-        // Wir nutzen die synchronisierte NetworkList statt der lokalen playerIds Liste
+        // Auf dem Client ist playerIds leer, deshalb nutzen wir playerDataList!
         if (playerDataList == null || playerDataList.Count == 0) return false;
 
         int index = activePlayerIndex.Value;
-
-        // Sicherheitscheck: Ist der Index gültig?
         if (index >= 0 && index < playerDataList.Count)
         {
-            // Wir vergleichen die ID mit der ID im synchronisierten Datensatz
             return playerDataList[index].clientId == clientId;
         }
         return false;
     }
+    // ---------------------------------------
 
     public void StartGame()
     {
@@ -151,15 +149,16 @@ public class GameManager : NetworkBehaviour
             playerDataList[i] = data;
         }
 
-        // --- Dealer Rotation ---
+        // Dealer-Rotation & Startspieler festlegen
         if (IsServer)
         {
-            // Wir nutzen playerDataList.Count statt playerIds.Count für Konsistenz
-            int count = playerDataList.Count;
-            if (count > 0)
+            // Wir nutzen playerDataList.Count für Konsistenz
+            int playerCount = playerDataList.Count;
+            if (playerCount > 0)
             {
-                int dealerIndex = (currentRound - 1) % count;
-                int starterIndex = (dealerIndex + 1) % count;
+                int dealerIndex = (currentRound - 1) % playerCount;
+                int starterIndex = (dealerIndex + 1) % playerCount;
+
                 activePlayerIndex.Value = starterIndex;
                 Debug.Log($"Runde {currentRound}: Starter Index ist {starterIndex}");
             }
@@ -207,7 +206,8 @@ public class GameManager : NetworkBehaviour
     {
         ulong senderId = rpcParams.Receive.SenderClientId;
 
-        if (senderId != playerIds[activePlayerIndex.Value]) return; // Nicht dran
+        // Sicherheits-Check: Ist er dran?
+        if (!IsPlayerTurn(senderId)) return;
 
         Debug.Log($"Client {senderId} sagt {bid} Stiche an.");
 
@@ -223,8 +223,8 @@ public class GameManager : NetworkBehaviour
             }
         }
 
-        // Nächster Spieler darf bieten
-        activePlayerIndex.Value = (activePlayerIndex.Value + 1) % playerIds.Count;
+        // Nächster Spieler ist dran (Modulo Spielerzahl)
+        activePlayerIndex.Value = (activePlayerIndex.Value + 1) % playerDataList.Count;
 
         CheckAllBidsReceived();
     }
@@ -241,14 +241,12 @@ public class GameManager : NetworkBehaviour
 
         if (IsServer)
         {
-            // Starter beginnt auch das Ausspielen (links vom Dealer)
-            int dealerIndex = (currentRound - 1) % playerIds.Count;
-            int starterIndex = (dealerIndex + 1) % playerIds.Count;
+            // Der Startspieler der Biet-Runde fängt auch an zu spielen
+            int dealerIndex = (currentRound - 1) % playerDataList.Count;
+            int starterIndex = (dealerIndex + 1) % playerDataList.Count;
             activePlayerIndex.Value = starterIndex;
         }
     }
-
-    // --- Playing Logic ---
 
     [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
     public void PlayCardServerRpc(int colorInt, int valueInt, RpcParams rpcParams = default)
@@ -256,9 +254,12 @@ public class GameManager : NetworkBehaviour
         if (currentGameState.Value != GameState.Playing) return;
 
         ulong senderId = rpcParams.Receive.SenderClientId;
-        ulong activeId = playerIds[activePlayerIndex.Value];
 
-        if (senderId != activeId) return;
+        if (!IsPlayerTurn(senderId))
+        {
+            Debug.LogWarning($"Spieler {senderId} wollte legen, ist aber nicht dran.");
+            return;
+        }
 
         CardData cardToPlay = new CardData((CardColor)colorInt, (CardValue)valueInt);
 
@@ -272,17 +273,17 @@ public class GameManager : NetworkBehaviour
         currentTrickCards.Add(new PlayedCard(senderId, cardToPlay));
         PlayCardClientRpc(colorInt, valueInt, senderId);
 
-        if (currentTrickCards.Count == playerIds.Count)
+        if (currentTrickCards.Count == playerDataList.Count) // playerDataList.Count statt playerIds.Count
         {
             EvaluateTrick();
         }
         else
         {
-            activePlayerIndex.Value = (activePlayerIndex.Value + 1) % playerIds.Count;
+            activePlayerIndex.Value = (activePlayerIndex.Value + 1) % playerDataList.Count;
         }
     }
 
-    // --- Validierung & Auswertung ---
+    // --- Helper & Logic ---
     private bool IsValidMove(ulong playerId, CardData cardToPlay)
     {
         if (!PlayerHasCard(playerId, cardToPlay)) return false;
@@ -351,10 +352,8 @@ public class GameManager : NetworkBehaviour
         ulong winnerId = 0;
         bool winnerFound = false;
 
-        // 1. Zauberer
         foreach (var entry in currentTrickCards) { if (entry.cardData.value == CardValue.Wizard) { winnerId = entry.playerId; winnerFound = true; break; } }
 
-        // 2. Trumpf
         if (!winnerFound && isTrumpActive)
         {
             int highestValue = -1;
@@ -368,7 +367,6 @@ public class GameManager : NetworkBehaviour
             }
         }
 
-        // 3. Farbe
         if (!winnerFound)
         {
             CardColor leadColor = currentTrickCards[0].cardData.color;
@@ -416,7 +414,12 @@ public class GameManager : NetworkBehaviour
         else
         {
             EndTrickClientRpc(winnerId);
-            int winnerIndex = playerIds.IndexOf(winnerId);
+            int winnerIndex = -1;
+            // Finde Index via playerDataList
+            for (int i = 0; i < playerDataList.Count; i++)
+            {
+                if (playerDataList[i].clientId == winnerId) { winnerIndex = i; break; }
+            }
             activePlayerIndex.Value = winnerIndex;
             currentTrickCards.Clear();
         }
@@ -460,35 +463,28 @@ public class GameManager : NetworkBehaviour
         }
     }
 
-    // --- SPIELENDE LOGIK (NEU: Mit PlayerResult) ---
     private void EndGame()
     {
         Debug.Log("Spiel ist vorbei!");
         currentGameState.Value = GameState.GameOver;
 
-        // Liste erstellen und sortieren für Podium
         List<PlayerResult> results = new List<PlayerResult>();
         foreach (var p in playerDataList)
         {
             PlayerResult res = new PlayerResult { playerName = p.playerName, score = p.score };
             results.Add(res);
         }
-        results.Sort((a, b) => b.score.CompareTo(a.score)); // Sortieren nach Score absteigend
+        results.Sort((a, b) => b.score.CompareTo(a.score));
 
         ShowPodiumClientRpc(results.ToArray());
     }
 
     // --- CLIENT RPCs ---
 
-    // NEU: Empfängt die Liste statt nur eine ID
     [ClientRpc]
     private void ShowPodiumClientRpc(PlayerResult[] results)
     {
-        if (GameplayMenu.Instance != null)
-        {
-            // WICHTIG: Das Menü muss diese Methode haben!
-            GameplayMenu.Instance.ShowPodium(results);
-        }
+        if (GameplayMenu.Instance != null) GameplayMenu.Instance.ShowPodium(results);
     }
 
     [ClientRpc] private void EndTrickClientRpc(ulong winnerId) { if (GameplayMenu.Instance != null) GameplayMenu.Instance.ClearTable(); }
