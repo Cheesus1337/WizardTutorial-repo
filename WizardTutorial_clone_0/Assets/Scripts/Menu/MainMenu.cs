@@ -2,7 +2,7 @@ using TMPro;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement; // Wichtig für SceneManager
- // <- Das brauchst du meist nicht, wenn die Enums global sind
+
 
 public class MainMenu : MonoBehaviour
 {
@@ -16,21 +16,33 @@ public class MainMenu : MonoBehaviour
     // Start wird automatisch von Unity aufgerufen, wenn die Szene startet
     private void Start()
     {
-        // Alten Namen laden oder Standard setzen
+        // 1. Alten Namen laden oder einen zufälligen Default generieren
+        string defaultName = "Wizard " + Random.Range(100, 999);
+        string savedName = PlayerPrefs.GetString("PlayerName", defaultName);
+
+        // 2. InputField initialisieren
         if (nameInputField != null)
         {
-            nameInputField.text = PlayerPrefs.GetString("PlayerName", "Wizard " + Random.Range(100, 999));
-            // Listener, falls sich der Text ändert
+            nameInputField.text = savedName;
+
+            // WICHTIG: Das Setzen von .text im Code feuert NICHT das onValueChanged Event.
+            // Wir müssen die Variable also hier einmal manuell synchronisieren.
+            LocalPlayerName = savedName;
+
+            // Listener registrieren: Feuert nur, wenn der Spieler tippt
             nameInputField.onValueChanged.AddListener(OnNameChanged);
-            // Initial setzen
-            LocalPlayerName = nameInputField.text;
         }
+
     }
 
     public void OnNameChanged(string newName)
     {
+        // Name im statischen Speicher aktualisieren (für GameManager)
         LocalPlayerName = newName;
+
+        // Name auf der Festplatte speichern (für nächsten Neustart)
         PlayerPrefs.SetString("PlayerName", newName);
+        PlayerPrefs.Save(); // Erzwingt das sofortige Schreiben auf die Disk
     }
 
 

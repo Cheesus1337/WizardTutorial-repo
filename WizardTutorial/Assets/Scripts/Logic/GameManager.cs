@@ -522,9 +522,10 @@ public class GameManager : NetworkBehaviour
             playerDataList[i] = data;
         }
 
+        bool isLastRound = (currentRound.Value >= maxRounds);
         currentGameState.Value = GameState.Scoring;
         currentTrickCards.Clear();
-        ShowRoundEndButtonClientRpc();
+        ShowRoundEndButtonClientRpc(isLastRound);
     }
 
     
@@ -577,9 +578,16 @@ public class GameManager : NetworkBehaviour
     [ClientRpc] private void EndTrickClientRpc(ulong winnerId) 
     { if (GameplayMenu.Instance != null)
       GameplayMenu.Instance.ClearTable(); }
-    [ClientRpc] private void ShowRoundEndButtonClientRpc()
-    { if (IsServer && GameplayMenu.Instance != null)
-      GameplayMenu.Instance.ShowNextStepButton(true); }
+    [ClientRpc]private void ShowRoundEndButtonClientRpc(bool isLastRound)
+    {
+        if (IsServer && GameplayMenu.Instance != null)
+        {
+            // Erst den Text setzen
+            GameplayMenu.Instance.SetNextStepButtonText(isLastRound);
+            // Dann den Button anzeigen
+            GameplayMenu.Instance.ShowNextStepButton(true);
+        }
+    }
     [ClientRpc] private void ClearTableClientRpc()
     { if (GameplayMenu.Instance != null)
         { 

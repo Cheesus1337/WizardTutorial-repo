@@ -1,148 +1,184 @@
+using System.Text; // Wichtig für StringBuilder
+using TMPro;
 using Unity.Netcode;
 using UnityEngine;
-using UnityEngine.SceneManagement;
-using TMPro;
+using UnityEngine.UI;
 
-public class GameplayMenu : MonoBehaviour
+public class GameplayMenu : NetworkBehaviour
 {
-    public static GameplayMenu Instance { get; private set; }
+    public static GameplayMenu Instance;
 
-    [Header("UI References")]
+    [Header("UI Elements")]
+    [SerializeField] private GameObject startButton;
+    [SerializeField] private TextMeshProUGUI nextStepButtonLabel; // Aus vorherigem Schritt
+    [SerializeField] private GameObject nextStepButton;
+
+    // --- NEU: Textfeld für die Lobby-Liste ---
+    [Header("Lobby Info")]
+    [SerializeField] private TextMeshProUGUI lobbyInfoText;
+
+    [Header("Containers")]
     public Transform handContainer;
-    public Transform trumpCardPosition;
-    public Transform tableArea;
-    public GameObject trumpLabel;
-
-    [Header("Buttons")]
-    public GameObject nextStepButton;
-
-    [Header("Podium UI")]
-    public GameObject podiumPanel; // Das Panel mit den Plätzen
-    public TextMeshProUGUI firstPlaceText;
-    public TextMeshProUGUI secondPlaceText;
-    public TextMeshProUGUI thirdPlaceText;
-
-    [Header("Main UI")]
-    public GameObject startGameButton;
+    public Transform tableContainer;
+    public Transform trumpContainer;
+    public GameObject podiumPanel;
+    public Transform podiumContainer;
+    public GameObject podiumRowPrefab;
 
     private void Awake()
     {
-        Instance = this;
-        if (trumpLabel != null) trumpLabel.SetActive(false);
-        if (nextStepButton != null) nextStepButton.SetActive(false);
-        if (podiumPanel != null) podiumPanel.SetActive(false);
+        if (Instance != null && Instance != this) Destroy(this);
+        else Instance = this;
     }
 
-    private void OnDestroy()
+    public override void OnNetworkSpawn()
     {
-        if (Instance == this) Instance = null;
+        // 1. Start-Button nur für den Host sichtbar machen
+        if (startButton != null)
+        {
+            // NetworkManager.Singleton.IsServer ist true für den Host
+            startButton.SetActive(NetworkManager.Singleton.IsServer);
+        }
+
+        // 2. Events abonnieren, um die Lobby-Liste zu aktualisieren
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.playerDataList.OnListChanged += OnLobbyListChanged;
+            GameManager.Instance.currentGameState.OnValueChanged += OnGameStateChanged;
+
+            // Initiale Anzeige
+            UpdateLobbyText();
+        }
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.playerDataList.OnListChanged -= OnLobbyListChanged;
+            GameManager.Instance.currentGameState.OnValueChanged -= OnGameStateChanged;
+        }
+    }
+
+    // --- Event Handler ---
+
+    private void OnLobbyListChanged(NetworkListEvent<WizardPlayerData> changeEvent)
+    {
+        UpdateLobbyText();
+    }
+
+    private void OnGameStateChanged(GameState prev, GameState current)
+    {
+        // Wenn das Spiel startet (Phase nicht mehr Setup), Lobby-Text & Button ausblenden
+        if (current != GameState.Setup)
+        {
+            if (lobbyInfoText != null) lobbyInfoText.text = "";
+            if (startButton != null) startButton.SetActive(false);
+        }
+        else
+        {
+            // Falls wir (z.B. nach GameOver) wieder im Setup sind
+            UpdateLobbyText();
+            if (IsServer && startButton != null) startButton.SetActive(true);
+        }
+    }
+
+    private void UpdateLobbyText()
+    {
+        // Nur im Setup-Screen anzeigen
+        if (GameManager.Instance == null || GameManager.Instance.currentGameState.Value != GameState.Setup) return;
+        if (lobbyInfoText == null) return;
+
+        StringBuilder sb = new StringBuilder();
+        sb.AppendLine($"<b>Warte auf Host... ({GameManager.Instance.playerDataList.Count} Spieler)</b>");
+        sb.AppendLine(""); // Leerzeile
+
+        foreach (var player in GameManager.Instance.playerDataList)
+        {
+            sb.AppendLine($"- {player.playerName}");
+        }
+
+        lobbyInfoText.text = sb.ToString();
     }
 
     // --- Buttons ---
+
     public void OnStartGameClicked()
     {
-        if (NetworkManager.Singleton.IsServer)
+        if (GameManager.Instance != null)
         {
-            var gameManager = FindFirstObjectByType<GameManager>();
-            if (gameManager != null) gameManager.StartGame();
+            GameManager.Instance.StartGame();
         }
     }
 
     public void OnNextStepClicked()
     {
-        if (NetworkManager.Singleton.IsServer)
-        {
-            var gm = FindFirstObjectByType<GameManager>();
-            if (gm != null) gm.StartNextRoundServerRpc();
-        }
+        ShowNextStepButton(false);
+        GameManager.Instance.StartNextRoundServerRpc();
     }
 
-    public void OnMainMenuClicked()
-    {
-        NetworkManager.Singleton.Shutdown();
-        SceneManager.LoadScene("MainMenu");
-    }
-
-    public void Disconnect()
-    {
-        NetworkManager.Singleton.Shutdown();
-        SceneManager.LoadScene("MainMenu");
-    }
+    // --- Visual Helper ---
 
     public void HideStartButton()
     {
-        if (startGameButton != null) startGameButton.SetActive(false);
-    }
-
-    // --- Methoden für RPCs ---
-
-    public void ShowPodium(PlayerResult[] results)
-    {
-        if (podiumPanel == null) return;
-
-        podiumPanel.SetActive(true);
-        podiumPanel.transform.SetAsLastSibling(); // Ganz nach vorne holen
-
-        // Texte leeren
-        if (firstPlaceText) firstPlaceText.text = "";
-        if (secondPlaceText) secondPlaceText.text = "";
-        if (thirdPlaceText) thirdPlaceText.text = "";
-
-        // Plätze füllen
-        if (results.Length > 0 && firstPlaceText != null)
-            firstPlaceText.text = $"1. {results[0].playerName} ({results[0].score} Pkt)";
-
-        if (results.Length > 1 && secondPlaceText != null)
-            secondPlaceText.text = $"2. {results[1].playerName} ({results[1].score} Pkt)";
-
-        if (results.Length > 2 && thirdPlaceText != null)
-            thirdPlaceText.text = $"3. {results[2].playerName} ({results[2].score} Pkt)";
-    }
-
-    public void ClearHand()
-    {
-        if (handContainer == null) return;
-        foreach (Transform child in handContainer) Destroy(child.gameObject);
-    }
-
-    public void PlaceCardOnTable(CardData cardData, GameObject cardPrefab, ulong clientId)
-    {
-        if (tableArea == null || cardPrefab == null) return;
-        GameObject playedCard = Instantiate(cardPrefab, tableArea);
-        CardController controller = playedCard.GetComponent<CardController>();
-        if (controller != null)
-        {
-            controller.SetBaseScale(0.8f);
-            controller.Initialize(cardData);
-        }
-    }
-
-    public void ClearTable()
-    {
-        if (tableArea == null) return;
-        foreach (Transform child in tableArea) Destroy(child.gameObject);
-    }
-
-    public void ShowTrumpCard(CardData cardData, GameObject cardPrefab)
-    {
-        if (trumpCardPosition == null) return;
-        foreach (Transform child in trumpCardPosition) Destroy(child.gameObject);
-
-        if (cardPrefab != null)
-        {
-            GameObject trumpCard = Instantiate(cardPrefab, trumpCardPosition);
-            var controller = trumpCard.GetComponent<CardController>();
-            if (controller != null)
-            {
-                controller.SetBaseScale(0.7f);
-                controller.Initialize(cardData);
-            }
-            if (trumpLabel != null) trumpLabel.SetActive(true);
-        }
+        if (startButton != null) startButton.SetActive(false);
+        if (lobbyInfoText != null) lobbyInfoText.text = ""; // Sicherstellen, dass Text weg ist
     }
 
     public void ShowNextStepButton(bool show)
     {
         if (nextStepButton != null) nextStepButton.SetActive(show);
+    }
+
+    public void SetNextStepButtonText(bool isLastRound)
+    {
+        if (nextStepButtonLabel != null)
+        {
+            nextStepButtonLabel.text = isLastRound ? "Showdown" : "Nächste Runde";
+        }
+    }
+
+    public void ClearHand()
+    {
+        foreach (Transform child in handContainer) Destroy(child.gameObject);
+    }
+
+    public void ClearTable()
+    {
+        foreach (Transform child in tableContainer) Destroy(child.gameObject);
+    }
+
+    public void PlaceCardOnTable(CardData cardData, GameObject cardPrefab, ulong playerId)
+    {
+        GameObject cardObj = Instantiate(cardPrefab, tableContainer);
+        CardController cc = cardObj.GetComponent<CardController>();
+        if (cc != null) cc.Initialize(cardData);
+
+        // Optional: Den Namen des Spielers über/unter die Karte schreiben?
+        // Das könnte man später noch hinzufügen.
+    }
+
+    public void ShowTrumpCard(CardData cardData, GameObject cardPrefab)
+    {
+        foreach (Transform child in trumpContainer) Destroy(child.gameObject);
+        GameObject cardObj = Instantiate(cardPrefab, trumpContainer);
+        CardController cc = cardObj.GetComponent<CardController>();
+        if (cc != null) cc.Initialize(cardData);
+    }
+
+    public void ShowPodium(PlayerResult[] results)
+    {
+        if (podiumPanel != null) podiumPanel.SetActive(true);
+        foreach (Transform child in podiumContainer) Destroy(child.gameObject);
+
+        for (int i = 0; i < results.Length; i++)
+        {
+            GameObject row = Instantiate(podiumRowPrefab, podiumContainer);
+            TextMeshProUGUI text = row.GetComponentInChildren<TextMeshProUGUI>();
+            if (text != null)
+            {
+                text.text = $"{i + 1}. {results[i].playerName} ({results[i].score} Pkt)";
+            }
+        }
     }
 }
