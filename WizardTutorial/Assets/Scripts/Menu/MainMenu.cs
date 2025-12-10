@@ -64,12 +64,12 @@ public class MainMenu : MonoBehaviour
                
     }
 
-    public void StartServer()
+   /* public void StartServer()
     {
         Debug.Log("Start Server button clicked");
         NetworkManager.Singleton.StartServer();
         NetworkManager.Singleton.SceneManager.LoadScene("GamePlay", LoadSceneMode.Single);
-    }
+    }*/
 
     public void StartClient()
     {
