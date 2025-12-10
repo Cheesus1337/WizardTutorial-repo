@@ -39,7 +39,8 @@ public class GameManager : NetworkBehaviour
     public static GameManager Instance { get; private set; }
 
     [Header("Game Settings")]
-    [SerializeField] public int currentRound = 1;
+    // ÄNDERUNG: currentRound ist jetzt eine NetworkVariable für automatischen Sync
+    public NetworkVariable<int> currentRound = new NetworkVariable<int>(1);
     [SerializeField] private int maxRounds = 3;
 
     [Header("References")]
@@ -71,6 +72,7 @@ public class GameManager : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        // 1. Server Setup
         if (IsServer)
         {
             NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
@@ -80,12 +82,13 @@ public class GameManager : NetworkBehaviour
                     OnClientConnected(uid);
             }
             Debug.Log("GameManager gestartet (Server Mode)");
-            // Namen senden sobald wir verbunden sind ---
-            if (IsClient)
-            {
-                // Wir schicken unseren Namen, den wir im Menü eingegeben haben
-                StartCoroutine(SendNameWithDelay());
-            }
+        }
+
+        // 2. Client Setup (ÄNDERUNG: Dies muss AUßERHALB von IsServer stehen!)
+        if (IsClient)
+        {
+            // Wir schicken unseren Namen, den wir im Menü eingegeben haben
+            StartCoroutine(SendNameWithDelay());
         }
     }
 
@@ -162,7 +165,7 @@ public class GameManager : NetworkBehaviour
             // Regel: Summe darf nicht gleich Rundenanzahl sein
             // currentSum + forbidden = currentRound
             // forbidden = currentRound - currentSum
-            int forbidden = currentRound - currentSum;
+            int forbidden = currentRound.Value - currentSum;
 
             // Verboten ist nur möglich, wenn die Zahl überhaupt wählbar wäre (>= 0)
             if (forbidden >= 0) return forbidden;
@@ -175,14 +178,14 @@ public class GameManager : NetworkBehaviour
     public void StartGame()
     {
         if (!IsServer) return;
-        currentRound = 1;
+        currentRound.Value = 1;
         StartRound();
     }
 
     private void StartRound()
     {
         tricksPlayedInRound = 0;
-        Debug.Log($"Starte Runde {currentRound}.");
+        Debug.Log($"Starte Runde {currentRound.Value}.");
 
         currentGameState.Value = GameState.Bidding;
         // Button ausblenden auf Clients (via Statuswechsel oder explizit)
@@ -201,7 +204,7 @@ public class GameManager : NetworkBehaviour
         if (IsServer)
         {
             // Wir nutzen playerDataList.Count für Konsistenz
-            int dealerIndex = (currentRound - 1) % playerDataList.Count;
+            int dealerIndex = (currentRound.Value - 1) % playerDataList.Count;
             int starterIndex = (dealerIndex + 1) % playerDataList.Count;
             activePlayerIndex.Value = starterIndex;
         }
@@ -214,7 +217,7 @@ public class GameManager : NetworkBehaviour
         {
             serverHandCards[clientId].Clear();
             List<CardData> handCards = new List<CardData>();
-            for (int i = 0; i < currentRound; i++)
+            for (int i = 0; i < currentRound.Value; i++)
             {
                 if (deck.Count > 0) { handCards.Add(deck[0]); deck.RemoveAt(0); }
             }
@@ -485,7 +488,7 @@ public class GameManager : NetworkBehaviour
 
         tricksPlayedInRound++;
 
-        if (tricksPlayedInRound == currentRound)
+        if (tricksPlayedInRound == currentRound.Value)
         {
             Debug.Log("Runde beendet! Berechne Punkte.");
             CalculateScores();
@@ -533,13 +536,13 @@ public class GameManager : NetworkBehaviour
 
         ClearTableClientRpc();
 
-        if (currentRound >= maxRounds)
+        if (currentRound.Value >= maxRounds)
         {
             EndGame();
         }
         else
         {
-            currentRound++;
+            currentRound.Value++;
             StartRound();
         }
     }
