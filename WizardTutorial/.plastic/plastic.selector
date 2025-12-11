@@ -1,0 +1,4 @@
+repository "WizardTutorial/Wizard@9072266712612@cloud"
+  path "/"
+    br "/main"
+    co "/main"
