@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using static CardEnums;
 
 public enum GameState
@@ -72,6 +73,25 @@ public class GameManager : NetworkBehaviour
         playerDataList = new NetworkList<WizardPlayerData>();
     }
 
+
+    // Method to start the game
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+    public void StartGameServerRpc()
+    {
+        if (IsServer)
+        {
+            // Load the gameplay scene for all connected clients
+            NetworkManager.Singleton.SceneManager.LoadScene("GamePlay", LoadSceneMode.Single);
+        }
+    }
+
+    // Example method to trigger the game start (can be called by the host)
+    public void HostStartGame()
+    {
+        
+            StartGameServerRpc();
+        
+    }
     public override void OnNetworkSpawn()
     {
         // 1. Server Setup

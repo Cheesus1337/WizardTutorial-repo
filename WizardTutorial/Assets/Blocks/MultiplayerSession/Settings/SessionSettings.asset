@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 383e97d81e425c14f9b074d4dfab93e2, type: 3}
   m_Name: SessionSettings
   m_EditorClassIdentifier: 
-  maxPlayers: 4
-  sessionName: default-session-name
-  sessionType: default-session
+  maxPlayers: 6
+  sessionName: Wizard Game
+  sessionType: Mega
   usePlayerName: 1
   createNetworkSession: 0
   networkType: 1
