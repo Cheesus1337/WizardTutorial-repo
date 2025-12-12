@@ -619,18 +619,6 @@ GameObject:
   m_CorrespondingSourceObject: {fileID: 9160102998124389200, guid: 0b3d2b35d82d5e44f9952e77efe82051, type: 3}
   m_PrefabInstance: {fileID: 1163136710}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &630953889
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 630953888}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 71997b04c4ab4f748925b4f0f4926ab5, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SessionGameStarter
 --- !u!114 &630953893
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -643,7 +631,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 93039d430872044429ed6e447d1bf336, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LobbyManager
-  startGameButton: {fileID: 1990189080}
+  quickJoinUIDocument: {fileID: 1454878333}
 --- !u!1 &647172082
 GameObject:
   m_ObjectHideFlags: 0
@@ -1297,9 +1285,6 @@ PrefabInstance:
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents:
-    - targetCorrespondingSourceObject: {fileID: 9160102998124389200, guid: 0b3d2b35d82d5e44f9952e77efe82051, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 630953889}
     - targetCorrespondingSourceObject: {fileID: 9160102998124389200, guid: 0b3d2b35d82d5e44f9952e77efe82051, type: 3}
       insertIndex: -1
       addedObject: {fileID: 630953893}

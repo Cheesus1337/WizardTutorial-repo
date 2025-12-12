@@ -1,52 +1,88 @@
 using Unity.Netcode;
 using UnityEngine;
-using UnityEngine.UI;
 using UnityEngine.SceneManagement;
+using UnityEngine.UIElements; // WICHTIG für UI Toolkit
 
 public class LobbyManager : MonoBehaviour
 {
-    [Header("UI Referenzen")]
-    [SerializeField] private Button startGameButton; // Hier den neuen Button reinziehen
+    [Header("Referenzen")]
+    [SerializeField] private UIDocument quickJoinUIDocument;
 
-    void Start()
+    private Button startBtn;
+
+    void OnEnable()
     {
-        // Sicherheitshalber Button verstecken und Listener hinzufügen
-        if (startGameButton != null)
+        if (quickJoinUIDocument == null)
         {
-            startGameButton.gameObject.SetActive(false);
-            startGameButton.onClick.AddListener(OnStartGameClicked);
+            Debug.LogError("LobbyManager: UI Document ist nicht zugewiesen!");
+            return;
+        }
+
+        var root = quickJoinUIDocument.rootVisualElement;
+
+        // Suche nach dem Button-Namen aus dem UI Builder
+        startBtn = root.Q<Button>("StartGameBtn");
+
+        if (startBtn != null)
+        {
+            Debug.Log("LobbyManager: 'StartGameBtn' gefunden und verknüpft.");
+            startBtn.clicked += OnStartGameClicked;
+            //startBtn.style.display = DisplayStyle.Flex; zum testen immer anzeigen
+            startBtn.style.display = DisplayStyle.None; // Erstmal verstecken
+        }
+        else
+        {
+            Debug.LogError("LobbyManager: Button 'StartGameBtn' wurde im UXML NICHT gefunden! Prüfe den Namen im UI Builder.");
         }
     }
 
     void Update()
     {
-        // Wir prüfen in jedem Frame den Status (einfachste Methode für UI Updates)
-        if (NetworkManager.Singleton != null)
+        // 1. Button Referenz Check
+        if (startBtn == null) return;
+
+        // 2. DER KNACKPUNKT: Finden wir den NetworkManager?
+        if (NetworkManager.Singleton == null)
         {
-            // Sind wir verbunden UND sind wir der Host (Server)?
-            if (NetworkManager.Singleton.IsHost)
+            // Damit wir nicht 60x pro Sekunde gespammt werden, nur alle paar Sekunden warnen
+            if (Time.frameCount % 300 == 0)
+                Debug.LogWarning("ALARM: 'NetworkManager.Singleton' ist NULL! Das Skript findet den NetworkManager nicht.");
+
+            return; // Hier bricht er ab!
+        }
+
+        // 3. Status Check (Läuft er?)
+        if (!NetworkManager.Singleton.IsListening)
+        {
+            if (Time.frameCount % 300 == 0)
+                Debug.Log("NetworkManager gefunden, aber noch nicht verbunden (IsListening = false).");
+            return;
+        }
+
+        // 4. Host Logik
+        if (NetworkManager.Singleton.IsHost)
+        {
+            if (startBtn.style.display == DisplayStyle.None)
             {
-                // Button zeigen!
-                if (startGameButton != null && !startGameButton.gameObject.activeSelf)
-                {
-                    startGameButton.gameObject.SetActive(true);
-                }
+                Debug.Log("BIN HOST! Button AN.");
+                startBtn.style.display = DisplayStyle.Flex;
             }
-            // Falls wir nur Client sind oder getrennt wurden -> Button verstecken
-            else
+        }
+        else // Client
+        {
+            if (startBtn.style.display == DisplayStyle.Flex)
             {
-                if (startGameButton != null && startGameButton.gameObject.activeSelf)
-                {
-                    startGameButton.gameObject.SetActive(false);
-                }
+                startBtn.style.display = DisplayStyle.None;
             }
         }
     }
 
     private void OnStartGameClicked()
     {
-        Debug.Log("Host startet das Spiel!");
-        // Dies ist der Befehl, der alle Clients in die GamePlay-Szene zieht!
-        NetworkManager.Singleton.SceneManager.LoadScene("GamePlay", LoadSceneMode.Single);
+        if (NetworkManager.Singleton.IsHost)
+        {
+            Debug.Log("Host startet das Spiel! Lade Szene...");
+            NetworkManager.Singleton.SceneManager.LoadScene("GamePlay", LoadSceneMode.Single);
+        }
     }
 }
