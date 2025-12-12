@@ -632,6 +632,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LobbyManager
   quickJoinUIDocument: {fileID: 1454878333}
+--- !u!114 &630953894
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 630953888}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 561d7f9985432cb4a951e6ba153632a7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::NetworkManagerCleanup
 --- !u!1 &647172082
 GameObject:
   m_ObjectHideFlags: 0
@@ -1288,6 +1300,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 9160102998124389200, guid: 0b3d2b35d82d5e44f9952e77efe82051, type: 3}
       insertIndex: -1
       addedObject: {fileID: 630953893}
+    - targetCorrespondingSourceObject: {fileID: 9160102998124389200, guid: 0b3d2b35d82d5e44f9952e77efe82051, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 630953894}
   m_SourcePrefab: {fileID: 100100000, guid: 0b3d2b35d82d5e44f9952e77efe82051, type: 3}
 --- !u!1 &1195840183
 GameObject:

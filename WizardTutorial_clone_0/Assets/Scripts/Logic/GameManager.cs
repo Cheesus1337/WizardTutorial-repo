@@ -112,6 +112,7 @@ public class GameManager : NetworkBehaviour
         // 2. Client Setup
         if (IsClient)
         {
+            Debug.Log("GameManager gestartet (Client Mode)"); // Optionales Log
             StartCoroutine(SendNameWithDelay());
         }
     }
@@ -132,11 +133,23 @@ public class GameManager : NetworkBehaviour
     {
         // Wir warten kurz (0.2 Sekunden), um sicherzugehen, dass der Server 
         // unseren Join (OnClientConnected) verarbeitet hat.
-        yield return new WaitForSeconds(0.2f);
+        yield return new WaitForSeconds(0.5f);
 
-        string myName = MainMenu.LocalPlayerName;
-        Debug.Log($"[Client] Sende meinen Namen an Server: {myName}");
-        SubmitNameServerRpc(myName);
+        string playerName = PlayerPrefs.GetString("WizardPlayerName", "Magier " + Random.Range(100, 999));
+
+        // --- HIER IST DER TRICK FÜR MULTIPLAYER PLAY MODE ---
+#if UNITY_EDITOR
+        // Wir prüfen: Läuft das Spiel im Editor?
+        // Wenn ja: Ist meine ID größer als 0? (0 ist meist der Host)
+        if (NetworkManager.Singleton.LocalClientId > 0)
+        {
+            // Wir hängen die ID an, damit wir die Fenster unterscheiden können
+            playerName = $"{playerName} (Client {NetworkManager.Singleton.LocalClientId})";
+        }
+#endif
+        // ----------------------------------------------------
+        Debug.Log($"[Client] Sende meinen Namen an Server: {playerName}");
+        SubmitNameServerRpc(playerName);
     }
 
     private void OnClientConnected(ulong clientId)
@@ -329,6 +342,18 @@ public class GameManager : NetworkBehaviour
 
         // Wenn kein Zauberer lag, geht es hier direkt weiter:
         StartBiddingPhase();
+    }
+
+    public void ReturnToLobby()
+    {
+        if (!IsServer) return;
+
+        Debug.Log("[GameManager] Host bringt alle zurück zur Lobby...");
+
+        // WICHTIG: NetworkSceneManager nutzen!
+        // Das lädt die Szene 'MainMenu' für Host UND alle Clients gleichzeitig.
+        // Die Verbindung (Session) bleibt dabei bestehen!
+        NetworkManager.Singleton.SceneManager.LoadScene("MainMenu", UnityEngine.SceneManagement.LoadSceneMode.Single);
     }
 
     // Synchronisierte Trumpffarbe für alle Clients

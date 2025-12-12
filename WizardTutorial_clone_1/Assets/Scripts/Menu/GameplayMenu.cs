@@ -13,6 +13,7 @@ public class GameplayMenu : NetworkBehaviour
     [SerializeField] private TextMeshProUGUI nextStepButtonLabel;
     [SerializeField] private GameObject nextStepButton;
     [SerializeField] private TextMeshProUGUI lobbyInfoText;
+    [SerializeField] private Button mainMenuButton; // Der Button "Zurück zum Menu"
 
     [Header("Podium Settings")]
     [SerializeField] private GameObject podiumPanel;
@@ -39,6 +40,12 @@ public class GameplayMenu : NetworkBehaviour
             GameManager.Instance.playerDataList.OnListChanged += OnLobbyListChanged;
             GameManager.Instance.currentGameState.OnValueChanged += OnGameStateChanged;
             UpdateLobbyText();
+        }
+        if (mainMenuButton != null)
+        {
+            mainMenuButton.onClick.AddListener(OnMainMenuClicked);
+            // Vorerst verstecken, wird erst am Ende gezeigt
+            mainMenuButton.gameObject.SetActive(false);
         }
     }
 
@@ -113,6 +120,22 @@ public class GameplayMenu : NetworkBehaviour
                 podiumSlots[i].gameObject.SetActive(false);
             }
         }
+        if (mainMenuButton != null)
+        {
+            if (NetworkManager.Singleton.IsServer)
+            {
+                mainMenuButton.gameObject.SetActive(true);
+                // Optional: Text ändern zu "Zurück zur Lobby"
+                var btnText = mainMenuButton.GetComponentInChildren<TMP_Text>();
+                if (btnText) btnText.text = "Zurück zur Lobby";
+            }
+            else
+            {
+                // Clients sehen den Button nicht, sie werden automatisch mitgezogen
+                mainMenuButton.gameObject.SetActive(false);
+                // Optional: Zeige Text "Warte auf Host..." im Podium
+            }
+        }
     }
 
     // --- Buttons & Helper ---
@@ -120,7 +143,7 @@ public class GameplayMenu : NetworkBehaviour
     public void OnNextStepClicked() { ShowNextStepButton(false); GameManager.Instance.StartNextRoundServerRpc(); }
     public void OnHomeClicked()
     {
-        // 1. Netzwerkverbindung sauber trennen
+      /*  // 1. Netzwerkverbindung sauber trennen
         if (NetworkManager.Singleton != null)
         {
             NetworkManager.Singleton.Shutdown();
@@ -128,6 +151,9 @@ public class GameplayMenu : NetworkBehaviour
 
         // 2. Szene wechseln (zurück zum Start)
         UnityEngine.SceneManagement.SceneManager.LoadScene("MainMenu");
+      */
+
+
     }
     public void HideStartButton() { if (startButton != null) startButton.SetActive(false); }
     public void ShowNextStepButton(bool show) { if (nextStepButton != null) nextStepButton.SetActive(show); }
@@ -146,5 +172,24 @@ public class GameplayMenu : NetworkBehaviour
         GameObject cardObj = Instantiate(cardPrefab, trumpContainer);
         CardController cc = cardObj.GetComponent<CardController>();
         if (cc != null) cc.Initialize(cardData);
+    }
+    private void OnMainMenuClicked()
+    {
+        // Wir rufen den GameManager auf (siehe Schritt 2)
+        /*var gm = FindFirstObjectByType<GameManager>();
+        if (gm != null)
+        {
+            gm.ReturnToLobby();
+        }
+        */
+        // Statt alle mitzunehmen, trennen wir sauber die Verbindung.
+        // Jeder kehrt für sich ins Menü zurück.
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.Shutdown();
+        }
+
+        // Nach dem Shutdown laden wir lokal das Menü
+        UnityEngine.SceneManagement.SceneManager.LoadScene("MainMenu");
     }
 }

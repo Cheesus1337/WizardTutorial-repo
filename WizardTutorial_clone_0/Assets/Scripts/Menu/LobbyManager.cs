@@ -38,42 +38,42 @@ public class LobbyManager : MonoBehaviour
 
     void Update()
     {
-        // 1. Button Referenz Check
-        if (startBtn == null) return;
+        if (NetworkManager.Singleton == null) return;
 
-        // 2. DER KNACKPUNKT: Finden wir den NetworkManager?
-        if (NetworkManager.Singleton == null)
+        // Sind wir verbunden UND in der MainMenu Szene?
+        if (NetworkManager.Singleton.IsListening &&
+            UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "MainMenu")
         {
-            // Damit wir nicht 60x pro Sekunde gespammt werden, nur alle paar Sekunden warnen
-            if (Time.frameCount % 300 == 0)
-                Debug.LogWarning("ALARM: 'NetworkManager.Singleton' ist NULL! Das Skript findet den NetworkManager nicht.");
-
-            return; // Hier bricht er ab!
-        }
-
-        // 3. Status Check (Läuft er?)
-        if (!NetworkManager.Singleton.IsListening)
-        {
-            if (Time.frameCount % 300 == 0)
-                Debug.Log("NetworkManager gefunden, aber noch nicht verbunden (IsListening = false).");
-            return;
-        }
-
-        // 4. Host Logik
-        if (NetworkManager.Singleton.IsHost)
-        {
-            if (startBtn.style.display == DisplayStyle.None)
+            // Host Button Logik
+            if (NetworkManager.Singleton.IsHost)
             {
-                Debug.Log("BIN HOST! Button AN.");
-                startBtn.style.display = DisplayStyle.Flex;
+                if (startBtn != null && startBtn.style.display == DisplayStyle.None)
+                {
+                    Debug.Log("Zurück in der Lobby: Host-Button wieder aktivieren.");
+                    startBtn.style.display = DisplayStyle.Flex;
+                }
             }
-        }
-        else // Client
-        {
-            if (startBtn.style.display == DisplayStyle.Flex)
+
+            // Client Logik (Button verstecken)
+            if (!NetworkManager.Singleton.IsHost && startBtn != null)
             {
                 startBtn.style.display = DisplayStyle.None;
             }
+
+            // Sicherstellen, dass das Lobby-UI (Spielerliste) sichtbar ist
+            // Das "QuickJoin" UI Document könnte durch den Reload deaktiviert sein
+            if (quickJoinUIDocument != null && quickJoinUIDocument.rootVisualElement != null)
+            {
+                // Manchmal verstecken die Building Blocks das Root-Element beim Start
+                // Hier zwingen wir es zurück
+                if (quickJoinUIDocument.rootVisualElement.style.display == DisplayStyle.None)
+                    quickJoinUIDocument.rootVisualElement.style.display = DisplayStyle.Flex;
+            }
+        }
+        else
+        {
+            // Nicht verbunden oder im Spiel -> Start Button weg
+            if (startBtn != null) startBtn.style.display = DisplayStyle.None;
         }
     }
 
