@@ -1,6 +1,10 @@
 <engine:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:engine="UnityEngine.UIElements" xmlns:editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../../../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
+    <Style src="project://database/Assets/Blocks/Common/Content/stylesheets/inputs.uss?fileID=7433441132597879392&amp;guid=e01aade3b4d44466be1a74cda2e4b773&amp;type=3#inputs"/>
+    <Style src="project://database/Assets/Blocks/Common/Content/stylesheets/labels.uss?fileID=7433441132597879392&amp;guid=3967daf31cdfb2d4b8326839de2c378e&amp;type=3#labels"/>
     <engine:VisualElement class="blocks-modal">
-        <engine:Label text="JOIN SESSION BY QUICKJOIN" class="blocks-header blocks-header--space-bottom blocks-header--sm"/>
+        <engine:Label text="User Name" class="blocks-header blocks-header--sm"/>
+        <engine:TextField label="" placeholder-text="Your Name" name="PlayerNameInput" data-source="" class="blocks-textfield blocks-toggle blocks-header--space-bottom"/>
+        <engine:Label text="JOIN SESSION BY QUICKJOIN" class="blocks-header blocks-header--sm"/>
         <Blocks.Sessions.QuickJoinButton name="QuickJoinButton" enable-rich-text="false" quick-join-settings="../Settings/QuickJoinSettings.asset?fileID=11400000&amp;guid=342532e706f5ac34582e818ea7e1ae33&amp;type=2#QuickJoinSettings">
             <Bindings>
                 <engine:DataBinding property="SessionSettings" binding-mode="ToTarget" data-source-path=""/>

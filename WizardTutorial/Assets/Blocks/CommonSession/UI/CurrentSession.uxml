@@ -1,5 +1,5 @@
 <engine:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:engine="UnityEngine.UIElements" xmlns:editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../../../../../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
-    <engine:VisualElement class="blocks-modal" style="align-content: auto; align-items: center; flex-wrap: nowrap; flex-direction: column; justify-content: center;">
+    <engine:VisualElement class="blocks-modal" style="align-content: auto; align-items: center; flex-wrap: nowrap; flex-direction: column; justify-content: center; height: 450px;">
         <engine:VisualElement class="blocks-container--horizontal blocks-container--space-between blocks-modal--left-aligned-text">
             <Blocks.Sessions.Common.SessionNameLabel class="blocks-header blocks-element--space-right">
                 <Bindings>
@@ -12,18 +12,7 @@
                 </Bindings>
             </Blocks.Sessions.Common.PlayerCountLabel>
         </engine:VisualElement>
-        <engine:VisualElement class="blocks-container--horizontal blocks-container--space-between blocks-element--space-bottom blocks-modal--left-aligned-text">
-            <Blocks.Sessions.Common.PlayerNameLabel class="blocks-element--space-right blocks-header blocks-header--sm">
-                <Bindings>
-                    <engine:DataBinding property="SessionType" data-source-path="sessionType" binding-mode="ToTarget"/>
-                </Bindings>
-            </Blocks.Sessions.Common.PlayerNameLabel>
-            <Blocks.Sessions.Common.CopySessionCodeElement class="blocks-copy-session--header">
-                <Bindings>
-                    <engine:DataBinding property="SessionType" data-source-path="sessionType" binding-mode="ToTarget"/>
-                </Bindings>
-            </Blocks.Sessions.Common.CopySessionCodeElement>
-        </engine:VisualElement>
+        <engine:VisualElement class="blocks-container--horizontal blocks-container--space-between blocks-element--space-bottom blocks-modal--left-aligned-text"/>
         <Blocks.Sessions.Common.PlayerListViewElement horizontal-scrolling="true" class="blocks-element--space-bottom">
             <Bindings>
                 <engine:DataBinding property="SessionType" data-source-path="sessionType" binding-mode="ToTarget"/>
@@ -34,9 +23,9 @@
                 <engine:DataBinding property="SessionType" binding-mode="ToTarget" data-source-path="sessionType"/>
             </Bindings>
         </Blocks.Sessions.Common.LeaveSessionButton>
-        <engine:Button text="Start Game" name="StartGameBtn" class="blocks-button" style="justify-content: flex-start; align-items: stretch; align-self: auto; align-content: flex-start; width: 214px; height: 52px;"/>
+        <engine:Button text="Start Game" name="StartGameBtn" class="blocks-button" style="justify-content: flex-start; align-items: stretch; align-self: auto; align-content: flex-start; width: 211px; height: 52px;"/>
         <engine:VisualElement enabled="false" class="blocks-container--horizontal blocks-container--right">
-            <Blocks.Sessions.Common.SessionStatusLabel enabled="false" class="blocks-element--space-right blocks-label" style="opacity: 0;">
+            <Blocks.Sessions.Common.SessionStatusLabel enabled="true" class="blocks-element--space-right blocks-label" style="opacity: 0;">
                 <Bindings>
                     <engine:DataBinding property="SessionType" data-source-path="sessionType" binding-mode="ToTarget"/>
                 </Bindings>
