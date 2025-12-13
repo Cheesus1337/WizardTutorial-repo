@@ -43,6 +43,7 @@ public class GameManager : NetworkBehaviour
     // ÄNDERUNG: currentRound ist jetzt eine NetworkVariable für automatischen Sync
     public NetworkVariable<int> currentRound = new NetworkVariable<int>(1);
     [SerializeField] private int maxRounds = 3;
+    
 
     [Header("References")]
     [SerializeField] private GameObject cardPrefab;
@@ -227,6 +228,12 @@ public class GameManager : NetworkBehaviour
     public void StartGame()
     {
         if (!IsServer) return;
+
+        // Compute maxRounds based on current player count.
+        // Safeguard against divide-by-zero and ensure at least 1 round.
+        int playerCount = playerDataList != null ? playerDataList.Count : 0;
+        maxRounds = Mathf.Max(1, 60 / Mathf.Max(1, playerCount));
+
         currentRound.Value = 1;
         StartRound();
     }
@@ -762,14 +769,57 @@ public class GameManager : NetworkBehaviour
             GameplayMenu.Instance.ShowNextStepButton(true);
         }
     }
-    [ClientRpc] private void ClearTableClientRpc()
+    [ClientRpc]private void ClearTableClientRpc()
     { if (GameplayMenu.Instance != null)
         { 
         GameplayMenu.Instance.ClearTable();
         GameplayMenu.Instance.ShowNextStepButton(false);
         } 
     }
+
     [ClientRpc] private void ReceiveHandCardsClientRpc(int[] colors, int[] values, ClientRpcParams clientRpcParams = default)
+    {
+        if (GameplayMenu.Instance == null) return;
+
+        // Erstmal Hand leer machen
+        GameplayMenu.Instance.ClearHand();
+
+        // 1. Temporäre Liste erstellen, um die Daten zu sammeln
+        List<CardData> receivedCards = new List<CardData>();
+
+        for (int i = 0; i < colors.Length; i++)
+        {
+            // Karte aus den Rohdaten (ints) rekonstruieren
+            CardData data = new CardData((CardEnums.CardColor)colors[i], (CardEnums.CardValue)values[i]);
+
+            // Zur Liste hinzufügen (noch NICHT anzeigen)
+            receivedCards.Add(data);
+        }
+
+        // 2. Die Liste sortieren
+        // Hier greift unser neues Skript von Schritt 1
+        receivedCards.Sort(new CardSorter());
+
+        // 3. Jetzt die sortierte Liste durchgehen und im UI anzeigen
+        foreach (CardData sortedCard in receivedCards)
+        {
+            if (cardPrefab != null)
+            {
+                // WICHTIG: Hier nutzen wir jetzt 'sortedCard' statt der unsortierten Daten aus der Schleife oben
+                GameObject newCard = Instantiate(cardPrefab, GameplayMenu.Instance.handContainer);
+                CardController controller = newCard.GetComponent<CardController>();
+
+                if (controller != null)
+                {
+                    controller.Initialize(sortedCard);
+                }
+            }
+        }
+
+        Debug.Log("[Client] Handkarten empfangen und sortiert.");
+    }
+
+    /*[ClientRpc] private void ReceiveHandCardsClientRpc(int[] colors, int[] values, ClientRpcParams clientRpcParams = default)
     {
         if (GameplayMenu.Instance == null) return;
         GameplayMenu.Instance.ClearHand();
@@ -783,7 +833,7 @@ public class GameManager : NetworkBehaviour
                 if (controller != null) controller.Initialize(data);
             }
         }
-    }
+    }*/
     [ClientRpc] private void PlayCardClientRpc(int color, int value, ulong playerId)
     {
         CardData data = new CardData((CardEnums.CardColor)color, (CardEnums.CardValue)value);
@@ -806,5 +856,68 @@ public class GameManager : NetworkBehaviour
         if ((int)value == 99) return;
         CardData trumpData = new CardData(color, value);
         if (GameplayMenu.Instance != null) GameplayMenu.Instance.ShowTrumpCard(trumpData, cardPrefab);
+    }
+
+    // Debug helper: deal N cards per player without starting a round
+    [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Owner)]
+    public void DealTestHandsServerRpc(int cardsPerPlayer = 10)
+    {
+        if (!IsServer) return;
+
+        // Build and shuffle a fresh deck
+        List<CardData> deck = DeckBuilder.GenerateStandardDeck();
+        DeckBuilder.ShuffleDeck(deck);
+
+        // Ensure we have player IDs tracked on the server
+        if (playerIds.Count == 0)
+        {
+            Debug.LogWarning("[Server] No players connected. Aborting test deal.");
+            return;
+        }
+
+        // Clear previous server-side hands
+        foreach (ulong clientId in playerIds)
+        {
+            if (!serverHandCards.ContainsKey(clientId))
+            {
+                serverHandCards[clientId] = new List<CardData>();
+            }
+            serverHandCards[clientId].Clear();
+        }
+
+        // Deal 'cardsPerPlayer' cards to each player
+        foreach (ulong clientId in playerIds)
+        {
+            List<CardData> handCards = new List<CardData>();
+            for (int i = 0; i < cardsPerPlayer; i++)
+            {
+                if (deck.Count == 0)
+                {
+                    Debug.LogWarning("[Server] Deck exhausted while dealing test hands.");
+                    break;
+                }
+                handCards.Add(deck[0]);
+                deck.RemoveAt(0);
+            }
+
+            serverHandCards[clientId].AddRange(handCards);
+
+            // Send to the specific client using existing RPC
+            int[] colors = new int[handCards.Count];
+            int[] values = new int[handCards.Count];
+            for (int k = 0; k < handCards.Count; k++)
+            {
+                colors[k] = (int)handCards[k].color;
+                values[k] = (int)handCards[k].value;
+            }
+
+            ClientRpcParams clientRpcParams = new ClientRpcParams
+            {
+                Send = new ClientRpcSendParams { TargetClientIds = new ulong[] { clientId } }
+            };
+            ReceiveHandCardsClientRpc(colors, values, clientRpcParams);
+        }
+
+        Debug.Log("[Server] Test hands dealt. Clients should sort and display hands.");
     }
 }
